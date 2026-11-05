@@ -1,0 +1,154 @@
+# 학회 정의. 학회를 추가하려면 항목 하나를 더 넣으면 된다.
+#
+# source        : dblp | openreview
+# month         : 통상 개최월 (집계 완료 판정에 사용)
+# all_core      : true면 LLM 판별을 생략하고 전편 core로 둔다 (RecSys)
+# color         : 사이트의 학회 색 슬롯 (1~8, 검증된 8색 순서. 9번째부터는 "기타"로 묶는다)
+# dblp.tocs     : DBLP 목차(bht) 이름 후보. {year}가 연도로 치환된다. 결과가 있는 것을 모두 모으고 논문 키로 중복 제거한다
+# dblp.volumes  : [{from: 연도, count: n}] 그 해부터 기대하는 볼륨 수 (KDD는 2025년부터 두 사이클)
+# tracks        : DBLP 목차 섹션 제목 → 정규 트랙. 위에서부터 처음 맞는 규칙을 쓴다 (대소문자 무시)
+#                 정규 트랙: main | short | applied | resource | demo | non_paper
+#                 어느 규칙에도 맞지 않는 섹션은 페이지 수 규칙으로 main/short로 두고 Issue로 알린다
+# short_max_pages : 섹션 정보가 없을 때 이 쪽수 이하면 short (0이면 쓰지 않음)
+# complete_rule : date (개최월 + 1개월이 지나야 완료) | presence (목록이 있으면 완료. OpenReview는 결정 공개 후에만 목록이 생김)
+# openreview    : [{from, to, api: v1|v2, invitation|venueid, track}] 연도 구간별 설정. track을 주면 그 트랙으로 고정
+
+counted_tracks: [main, short, applied, resource]   # 기본 집계에 들어가는 트랙 (demo는 사이트에서 토글)
+start_year: 2018
+
+venues:
+  RecSys:
+    name: ACM RecSys
+    source: dblp
+    month: 9
+    all_core: true
+    color: 1
+    complete_rule: date
+    dblp:
+      tocs: ["recsys{year}"]
+    short_max_pages: 0
+    tracks:
+      - {match: "reproducib", track: resource}
+      - {match: "late[- ]?breaking|lbr", track: short}       # RecSys LBR은 심사를 거친 짧은 논문이라 short로 센다
+      - {match: "short", track: short}
+      - {match: "demo", track: demo}
+      - {match: "industr", track: non_paper}                  # RecSys 산업 트랙은 발표 초록(1~2쪽)이라 제외
+      - {match: "keynote|tutorial|workshop|doctoral|panel|poster|challenge|perspective", track: non_paper}
+      - {match: "main|research|paper|session|full", track: main}
+
+  SIGIR:
+    name: ACM SIGIR
+    source: dblp
+    month: 7
+    color: 2
+    complete_rule: date
+    dblp:
+      tocs: ["sigir{year}"]
+    short_max_pages: 5
+    tracks:
+      - {match: "reproducib|resource", track: resource}
+      - {match: "short", track: short}
+      - {match: "sirip|industr", track: applied}
+      - {match: "demo", track: demo}
+      - {match: "keynote|tutorial|workshop|doctoral|panel|salute|award|invited", track: non_paper}
+      - {match: "perspective", track: main}
+      - {match: "full|research|long|paper|session", track: main}
+
+  KDD:
+    name: ACM KDD
+    source: dblp
+    month: 8
+    color: 3
+    complete_rule: date
+    dblp:
+      tocs: ["kdd{year}", "kdd{year}-1", "kdd{year}-2"]
+      volumes: [{from: 2025, count: 2}]
+    short_max_pages: 0
+    tracks:
+      - {match: 'applied|\bads\b', track: applied}
+      - {match: "dataset|benchmark", track: resource}
+      - {match: "demo", track: demo}
+      - {match: 'keynote|tutorial|workshop|panel|invited|hands[- ]on|\bcup\b|innovation|test[- ]of[- ]time|award', track: non_paper}
+      - {match: "research|paper|session", track: main}
+
+  WWW:
+    name: The Web Conference
+    source: dblp
+    month: 4
+    color: 4
+    complete_rule: date
+    dblp:
+      tocs: ["www{year}"]            # 'www{year}c' (companion: 워크숍·포스터)는 넣지 않는다
+    short_max_pages: 0
+    tracks:
+      - {match: "industr", track: applied}
+      - {match: "resource|dataset", track: resource}
+      - {match: "short|poster", track: short}
+      - {match: "demo", track: demo}
+      - {match: "keynote|tutorial|workshop|panel|phd|doctoral|challenge|web4good|history|invited", track: non_paper}
+      - {match: "research|track|paper|session", track: main}
+
+  WSDM:
+    name: ACM WSDM
+    source: dblp
+    month: 2
+    color: 5
+    complete_rule: date
+    dblp:
+      tocs: ["wsdm{year}"]
+    short_max_pages: 0
+    tracks:
+      - {match: "demo", track: demo}
+      - {match: 'keynote|tutorial|workshop|panel|doctoral|\bcup\b|industry day|invited', track: non_paper}
+      - {match: "paper|research|session|full", track: main}
+
+  CIKM:
+    name: ACM CIKM
+    source: dblp
+    month: 11
+    color: 6
+    complete_rule: date
+    dblp:
+      tocs: ["cikm{year}"]
+    short_max_pages: 5
+    tracks:
+      - {match: "resource", track: resource}
+      - {match: "short", track: short}
+      - {match: "applied|industr", track: applied}
+      - {match: "demo", track: demo}
+      - {match: 'keynote|tutorial|workshop|panel|phd|doctoral|\bcup\b|competition|industry day|invited', track: non_paper}
+      - {match: "full|research|long|paper|session", track: main}
+
+  NeurIPS:
+    name: NeurIPS
+    source: mixed            # 2018~2020 DBLP, 2021~ OpenReview
+    month: 12
+    color: 7
+    complete_rule: presence
+    dblp:
+      tocs: ["nips{year}", "neurips{year}"]
+      years: {to: 2020}
+    short_max_pages: 0
+    tracks:
+      - {match: ".*", track: main}
+    openreview:
+      - {from: 2021, to: 2022, api: v1, invitation: "NeurIPS.cc/{year}/Conference/-/Blind_Submission", track: main}
+      - {from: 2023, api: v2, venueid: "NeurIPS.cc/{year}/Conference", track: main}
+      - {from: 2022, to: 2022, api: v1, invitation: "NeurIPS.cc/{year}/Track/Datasets_and_Benchmarks/-/Submission", track: resource}
+      - {from: 2023, api: v2, venueid: "NeurIPS.cc/{year}/Track/Datasets_and_Benchmarks", track: resource}
+      - {from: 2024, api: v2, venueid: "NeurIPS.cc/{year}/Datasets_and_Benchmarks_Track", track: resource}
+
+  ICLR:
+    name: ICLR
+    source: openreview
+    month: 4
+    color: 8
+    complete_rule: presence
+    dblp:
+      tocs: ["iclr{year}"]       # OpenReview 가 0편을 돌려주면 DBLP 로 대체 수집 (배지는 없음)
+    short_max_pages: 0
+    tracks:
+      - {match: ".*", track: main}
+    openreview:
+      - {from: 2018, to: 2023, api: v1, invitation: "ICLR.cc/{year}/Conference/-/Blind_Submission", track: main}
+      - {from: 2024, api: v2, venueid: "ICLR.cc/{year}/Conference", track: main}

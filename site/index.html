@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RecSys Trends</title>
+<meta name="description" content="탑티어 학회 추천시스템 논문의 흐름을 학회·연도별로 한눈에 봅니다.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site"><div class="wrap">
+  <div class="brand">
+    <h1>RecSys Trends</h1>
+    <p id="brand-sub">탑티어 학회 추천시스템 논문의 흐름</p>
+  </div>
+  <dl class="dates">
+    <dt>데이터 기준</dt><dd id="d-data">—</dd>
+    <dt>집계 생성</dt><dd id="d-gen">—</dd>
+    <dt>다음 업데이트</dt><dd id="d-next">—</dd>
+  </dl>
+</div></header>
+
+<nav class="secnav" aria-label="섹션"><div class="wrap">
+  <a href="#overview"><b>⓪</b>한눈에 보기</a>
+  <a href="#trend"><b>①</b>편수 추이</a>
+  <a href="#papers"><b>④</b>논문 리스트</a>
+</div></nav>
+
+<main><div class="wrap">
+
+<div id="loading" class="loading">데이터를 불러오는 중…</div>
+<div id="load-error" class="loading" hidden></div>
+
+<section id="overview" aria-labelledby="h-ov" hidden>
+  <div class="sec-head"><span class="no">⓪</span><h2 id="h-ov">한눈에 보기</h2>
+    <p>기준 연도는 집계가 끝난 학회가 4분의 3 이상인 가장 최근 연도입니다. 전년 비교는 두 해 모두 집계가 끝난 학회끼리만 합니다.</p></div>
+  <div class="basis" id="basis"></div>
+  <div class="tiles" id="tiles"></div>
+  <div class="brief">
+    <div class="card"><h3>요약 (규칙 기반 자동 문장)</h3><ul class="sentences" id="sentences"></ul></div>
+    <div class="card"><h3>진행 중인 연도</h3><div id="inprog" class="inprog"></div></div>
+  </div>
+  <div class="card">
+    <div class="card-head">
+      <h3>학회별 집계 상태</h3>
+      <div class="legend-row"><span><span class="sym done"></span> 완료</span><span><span class="sym part"></span> 집계 중</span><span><span class="sym plan"></span> 예정</span><span class="muted">칸을 누르면 ④에서 해당 학회·연도를 엽니다</span></div>
+    </div>
+    <div class="board-wrap"><table class="board" id="board"></table></div>
+  </div>
+</section>
+
+<section id="trend" aria-labelledby="h-tr" hidden>
+  <div class="sec-head"><span class="no">①</span><h2 id="h-tr">편수 추이</h2>
+    <p>막대·점을 누르면 ④ 논문 리스트에 같은 조건이 적용됩니다. 흐린 막대는 잠정(집계가 끝난 학회만 합산) 값입니다.</p></div>
+  <div class="controls" role="group" aria-label="차트 설정">
+    <div><span class="ctl-label">지표</span><span class="seg" id="c-metric"><button type="button" data-v="count" aria-pressed="true">편수</button><button type="button" data-v="ratio" aria-pressed="false">학회 내 비율</button><button type="button" data-v="share" aria-pressed="false">추천 내 비중</button></span></div>
+    <label class="check"><input type="checkbox" id="c-related"> related 포함</label>
+    <button type="button" class="ghost" id="c-table" aria-pressed="false">표로 보기</button>
+  </div>
+  <figure class="chart" id="fig1">
+    <figcaption><h3 id="f1-title"></h3><p id="f1-sub"></p></figcaption>
+    <div class="legend-row" id="f1-legend"></div>
+    <div class="svgbox" id="f1-svg"></div>
+    <div class="tablebox" id="f1-table" hidden></div>
+    <p class="note" id="f1-note"></p>
+  </figure>
+</section>
+
+<section id="papers" aria-labelledby="h-pp" hidden>
+  <div class="sec-head"><span class="no">④</span><h2 id="h-pp">논문 리스트</h2>
+    <p>필터 상태는 주소에 저장되어 그대로 공유할 수 있습니다. 한국어 한 줄 요약과 4축 태그는 2단계에서 추가됩니다.</p></div>
+  <div class="card stack">
+    <div class="filters">
+      <label>학회<select id="f-venue"></select></label>
+      <label>연도<select id="f-year"></select></label>
+      <label>트랙<select id="f-track"></select></label>
+      <label>정렬<select id="f-sort"><option value="new">최신순</option><option value="cite">인용순</option><option value="title">제목순</option></select></label>
+      <label class="q">제목·저자 검색<input type="search" id="f-q" placeholder="예: sequential, contrastive, Kim"></label>
+    </div>
+    <div class="toggles">
+      <label class="check"><input type="checkbox" id="f-related"> <span>related 포함 <span class="muted">(광고 CTR·검색 랭킹처럼 경계가 애매한 논문)</span></span></label>
+      <label class="check"><input type="checkbox" id="f-border"> <span>경계 사례 보기 <span class="muted">(추천 키워드는 있지만 '추천 아님'으로 판정)</span></span></label>
+      <label class="check"><input type="checkbox" id="f-demo"> <span>demo 트랙 포함</span></label>
+    </div>
+    <div class="active-row"><span id="f-count"></span><span class="urlq" id="f-url"></span><button type="button" class="ghost" id="f-reset">필터 초기화</button></div>
+    <div class="plist" id="plist"></div>
+    <button type="button" class="ghost more" id="f-more" hidden>30편 더 보기</button>
+  </div>
+</section>
+
+</div></main>
+
+<footer><div class="wrap">
+  <span>RecSys Trends · 1단계</span>
+  <span>목록: DBLP (CC0) · OpenReview · 초록·인용: Semantic Scholar</span>
+  <span>추천 논문 판별은 AI(<span id="f-model"></span>)가 했으며 오류가 있을 수 있습니다. 누락·오분류는 <a id="f-issue" href="#">GitHub Issue</a>로 알려 주세요.</span>
+</div></footer>
+<div id="tip" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
