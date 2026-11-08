@@ -1,0 +1,124 @@
+# Scheduled update: collect → LLM classification (Batch) → re-judge → aggregate → deploy
+# May 20 and November 20 every year, 01:17 UTC. Can also be run manually from the Actions tab.
+name: update
+
+on:
+  schedule:
+    - cron: "17 1 20 5,11 *"
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "Years (e.g. 2025,2026). Empty = every venue-year not yet complete"
+        required: false
+        default: ""
+      venues:
+        description: "Venues (e.g. KDD,SIGIR). Empty = all"
+        required: false
+        default: ""
+      dry_run:
+        description: "Collect and estimate cost only, no LLM calls (recommended for the first run)"
+        type: boolean
+        default: false
+      force:
+        description: "Ignore the classification cache and re-judge everything (after changing the prompt or model)"
+        type: boolean
+        default: false
+      skip_validation:
+        description: "Skip the pre-deploy count validation (only after a blocked run whose cause you have checked)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      S2_API_KEY: ${{ secrets.S2_API_KEY }}
+      MAX_RUN_USD: ${{ vars.MAX_RUN_USD || '9.5' }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline
+        id: run
+        run: |
+          python -m pipeline.run update \
+            --years "${{ inputs.years }}" \
+            --venues "${{ inputs.venues }}" \
+            ${{ inputs.dry_run == true && '--dry-run' || '' }} \
+            ${{ inputs.force == true && '--force' || '' }} \
+            ${{ inputs.skip_validation == true && '--no-validate' || '' }} \
+            --wait-minutes 270
+
+      - name: Run report
+        if: always()
+        run: cat state/last_report.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - name: Commit data and state
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data state
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "data: update $(date -u +%Y-%m-%dT%H:%M)"
+          ok=0
+          for i in 1 2 3; do
+            if git pull --rebase origin "${{ github.ref_name }}" && git push; then ok=1; break; fi
+            sleep 15
+          done
+          if [ "$ok" != 1 ]; then echo "::error::push failed — state files were not saved"; exit 1; fi
+
+      - name: Build site
+        if: steps.run.outputs.deploy == 'true'
+        run: bash scripts/build_site.sh
+
+      - uses: actions/configure-pages@v5
+        if: steps.run.outputs.deploy == 'true'
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.run.outputs.deploy == 'true'
+        with:
+          path: _site
+
+      - uses: actions/deploy-pages@v4
+        if: steps.run.outputs.deploy == 'true'
+        id: deployment
+
+      - name: Unknown-track issue
+        if: always() && steps.run.outputs.unknown_tracks == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/gh_issue.sh unknown-track "Unrecognized track (section) names — add rules to venues.yaml" state/unknown_tracks.md
+
+      - name: Failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/gh_issue.sh pipeline-failure "Pipeline failed: update $(date -u +%F)" --failure
