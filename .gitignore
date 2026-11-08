@@ -1,0 +1,11 @@
+# temporary and local artifacts (never committed)
+work/
+_site/
+sample/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.tmp
+state/last_error.txt
+.venv/
+.DS_Store
