@@ -1,0 +1,105 @@
+# Advance: if a Batch submitted by update is still processing, pick it up and carry on (re-judge → aggregate → deploy)
+# Every 4 hours in update months (May, June, November, December), once a day otherwise. Exits in seconds when idle.
+name: advance
+
+on:
+  schedule:
+    - cron: "23 */4 * 5,6,11,12 *"
+    - cron: "23 3 * 1,2,3,4,7,8,9,10 *"
+  workflow_dispatch:
+    inputs:
+      skip_validation:
+        description: "Skip the pre-deploy count validation"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+jobs:
+  advance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      S2_API_KEY: ${{ secrets.S2_API_KEY }}
+      MAX_RUN_USD: ${{ vars.MAX_RUN_USD || '9.5' }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for pending work
+        id: check
+        run: |
+          PHASE=$(python3 -c "import json;print(json.load(open('state/pipeline.json')).get('phase','idle'))" 2>/dev/null || echo idle)
+          echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
+          echo "current phase: $PHASE"
+
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.phase != 'idle'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        if: steps.check.outputs.phase != 'idle'
+        run: pip install -r requirements.txt
+
+      - name: Advance pipeline
+        id: run
+        if: steps.check.outputs.phase != 'idle'
+        run: python -m pipeline.run advance --wait-minutes 270 ${{ inputs.skip_validation == true && '--no-validate' || '' }}
+
+      - name: Run report
+        if: always() && steps.check.outputs.phase != 'idle'
+        run: cat state/last_report.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - name: Commit data and state
+        if: always() && steps.check.outputs.phase != 'idle'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data state
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "data: advance $(date -u +%Y-%m-%dT%H:%M)"
+          ok=0
+          for i in 1 2 3; do
+            if git pull --rebase origin "${{ github.ref_name }}" && git push; then ok=1; break; fi
+            sleep 15
+          done
+          if [ "$ok" != 1 ]; then echo "::error::push failed — state files were not saved"; exit 1; fi
+
+      - name: Build site
+        if: steps.run.outputs.deploy == 'true'
+        run: bash scripts/build_site.sh
+
+      - uses: actions/configure-pages@v5
+        if: steps.run.outputs.deploy == 'true'
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.run.outputs.deploy == 'true'
+        with:
+          path: _site
+
+      - uses: actions/deploy-pages@v4
+        if: steps.run.outputs.deploy == 'true'
+        id: deployment
+
+      - name: Failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/gh_issue.sh pipeline-failure "Pipeline failed: advance $(date -u +%F)" --failure
