@@ -1,10 +1,10 @@
-/* RecSys Trends — 색은 데이터(학회)에만 쓰고, 나머지 UI는 먹색 단색으로 둔다 */
+/* RecSys Trends — colour is reserved for data (venues); the rest of the UI stays monochrome ink */
 :root{
   --bg:#f3f4f6; --surface:#fcfcfd; --surface-2:#eceef1; --ink:#11151b; --ink-2:#4a5260; --muted:#7d838d;
   --line:#e0e3e8; --axis:#c3c7cf; --chip:#e6e9ee; --accent:#11151b; --accent-ink:#ffffff; --focus:#2a78d6;
   --good:#0ca30c; --warn:#fab219; --up:#006300; --down:#b42c2c;
   --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300; --s7:#6250d6; --s8:#e34948; --s0:#9aa0a8;
-  --font:"IBM Plex Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color-scheme:light;
 }

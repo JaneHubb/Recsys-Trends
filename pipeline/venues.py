@@ -1,4 +1,4 @@
-"""venues.yaml 로더와 트랙 정규화."""
+"""venues.yaml loader and track normalization."""
 from __future__ import annotations
 
 import re
@@ -20,7 +20,7 @@ def load() -> dict:
         v["_rules"] = [(re.compile(r["match"], re.I), r["track"]) for r in v.get("tracks", [])]
         for _, t in v["_rules"]:
             if t not in NORMAL_TRACKS:
-                raise ValueError(f"{vid}: 알 수 없는 트랙 '{t}'")
+                raise ValueError(f"{vid}: unknown track '{t}'")
     return cfg
 
 
@@ -41,7 +41,7 @@ def start_year() -> int:
 
 
 def source_for(vcfg: dict, year: int) -> str:
-    """해당 연도에 쓸 출처: dblp | openreview"""
+    """Source to use for the given year: dblp | openreview"""
     src = vcfg["source"]
     if src != "mixed":
         return src
@@ -81,13 +81,13 @@ def page_count(pages: str | None) -> int | None:
 
 
 def normalize_track(vcfg: dict, section: str | None, pages: str | None) -> tuple[str, bool]:
-    """(정규 트랙, 섹션 규칙에 맞았는지). 규칙에 맞지 않으면 쪽수로 추정한다."""
+    """(normalized track, matched a section rule?). Falls back to the page count when no rule matches."""
     n = page_count(pages)
     if section:
         for rx, track in vcfg["_rules"]:
             if rx.search(section):
                 if track == "main" and n is not None and n <= 2:
-                    return "non_paper", True          # 발표 초록(1~2쪽)은 어느 섹션이든 논문이 아니다
+                    return "non_paper", True          # a 1-2 page talk abstract is not a paper whatever its section
                 return track, True
     if n is not None and n <= 2:
         return "non_paper", section is None

@@ -1,9 +1,9 @@
-/* RecSys Trends — 1단계 프런트엔드. 빌드 과정 없음. data/summary.json 과 data/papers/*.json 만 읽는다. */
+/* RecSys Trends — stage-1 front end. No build step. Reads only data/summary.json and data/papers/*.json. */
 (function () {
   'use strict';
   const $ = s => document.querySelector(s);
   const NS = 'http://www.w3.org/2000/svg';
-  const fmt = n => Number(n || 0).toLocaleString('ko-KR');
+  const fmt = n => Number(n || 0).toLocaleString('en-US');
   const p1 = x => (x * 100).toFixed(1) + '%';
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const DATA = 'data/';
@@ -30,7 +30,7 @@
   const cnt = (v, y) => (S.counts[v] || {})[String(y)] || { state: 'planned', total: 0, core: 0, related: 0, border: 0, pending: 0 };
   const doneVenues = y => VENUES.filter(v => cnt(v.id, y).state === 'done').map(v => v.id);
 
-  /* ---------------- 툴팁 ---------------- */
+  /* ---------------- tooltip ---------------- */
   const tip = $('#tip');
   function showTip(at, title, rows, hint) {
     tip.replaceChildren(el('div', { class: 't', text: title }));
@@ -53,34 +53,34 @@
     $('#d-data').textContent = S.data_date || '—';
     $('#d-gen').textContent = (S.generated || '').slice(0, 10) || '—';
     $('#d-next').textContent = S.next_update || '—';
-    $('#brand-sub').textContent = VENUES.map(v => v.id).join(' · ') + ' 추천시스템 논문의 흐름';
+    $('#brand-sub').textContent = 'Recommender-systems papers at ' + VENUES.map(v => v.id).join(' · ');
     $('#f-model').textContent = S.judge_model || 'LLM';
 
     const basis = $('#basis'); basis.replaceChildren();
     if (!b || !b.year) {
-      basis.append(el('span', { class: 'muted', text: '아직 집계가 끝난 학회가 없습니다.' }));
+      basis.append(el('span', { class: 'muted', text: 'No venue has completed aggregation yet.' }));
     } else {
-      basis.append(el('span', { class: 'yr' }, '기준 연도', el('strong', { text: String(b.year) })));
-      basis.append(el('span', { class: 'pill ' + (b.kind === 'final' ? 'final' : 'prov') }, el('span', { class: 'dot' }), (b.kind === 'final' ? '확정' : '잠정') + ' · ' + b.done + '/' + b.total + ' 학회'));
-      if (b.missing && b.missing.length) basis.append(el('span', { class: 'note', text: b.missing.join(', ') + ' 집계 중 · ' + (S.next_update || '다음') + ' 업데이트에 반영' }));
+      basis.append(el('span', { class: 'yr' }, 'Basis year', el('strong', { text: String(b.year) })));
+      basis.append(el('span', { class: 'pill ' + (b.kind === 'final' ? 'final' : 'prov') }, el('span', { class: 'dot' }), (b.kind === 'final' ? 'final' : 'provisional') + ' · ' + b.done + '/' + b.total + ' venues'));
+      if (b.missing && b.missing.length) basis.append(el('span', { class: 'note', text: b.missing.join(', ') + ' in progress · included in the ' + (S.next_update || 'next') + ' update' }));
     }
 
     const tiles = $('#tiles'); tiles.replaceChildren();
     const tile = (l, v, unit, d, dcls, f, hero) => el('div', { class: 'tile' }, el('div', { class: 'l', text: l }), el('div', { class: 'v' + (hero ? ' hero' : '') }, v, unit ? el('small', { text: unit }) : null), d ? el('div', { class: 'd ' + (dcls || '') , text: d }) : null, f ? el('div', { class: 'f', text: f }) : null);
     if (b && b.year) {
-      tiles.append(tile('추천 논문 (' + b.year + ', 집계 완료 ' + b.done + '개 학회)', fmt(ov.core), '편', null, '', 'core 기준 · related 포함 시 ' + fmt(ov.core_related) + '편', true));
+      tiles.append(tile('Recommender papers (' + b.year + ', ' + b.done + ' complete venues)', fmt(ov.core), '', null, '', 'core only · ' + fmt(ov.core_related) + ' including related', true));
       if (ov.delta != null) {
         const d = ov.delta;
-        tiles.append(tile('전년 대비 (같은 ' + ov.compare_venues.length + '개 학회)', (d >= 0 ? '+' : '') + (d * 100).toFixed(1), '%', (d >= 0 ? '▲ ' : '▼ ') + fmt(ov.compare_prev_core) + '편 → ' + fmt(ov.compare_core) + '편', d >= 0 ? 'up' : 'down', ov.compare_venues.join(' · ')));
+        tiles.append(tile('Year over year (same ' + ov.compare_venues.length + ' venues)', (d >= 0 ? '+' : '') + (d * 100).toFixed(1), '%', (d >= 0 ? '▲ ' : '▼ ') + fmt(ov.compare_prev_core) + ' → ' + fmt(ov.compare_core), d >= 0 ? 'up' : 'down', ov.compare_venues.join(' · ')));
       } else {
-        tiles.append(tile('전년 대비', '—', '', null, '', '두 해 모두 집계가 끝난 학회가 아직 없습니다'));
+        tiles.append(tile('Year over year', '—', '', null, '', 'No venue is complete in both years yet'));
       }
       if (ov.ratio_median != null) {
         const r1 = ov.ratio_median, r0 = ov.ratio_median_prev;
-        tiles.append(tile('학회 내 추천 비율 (중앙값)', (r1 * 100).toFixed(1), '%', r0 != null ? ((r1 >= r0 ? '▲ ' : '▼ ') + Math.abs((r1 - r0) * 100).toFixed(1) + '%p · 전년 ' + (r0 * 100).toFixed(1) + '%') : null, '', '추천 편수 ÷ 학회 전체 편수 · ' + ov.ratio_venues + '개 학회 (전편 추천인 RecSys 제외)'));
+        tiles.append(tile('Share within venue (median)', (r1 * 100).toFixed(1), '%', r0 != null ? ((r1 >= r0 ? '▲ ' : '▼ ') + Math.abs((r1 - r0) * 100).toFixed(1) + ' pts · previous year ' + (r0 * 100).toFixed(1) + '%') : null, '', 'recommender papers ÷ all papers at the venue · ' + ov.ratio_venues + ' venues (RecSys excluded, all its papers count)'));
       }
       const border = VENUES.reduce((a, v) => a + cnt(v.id, b.year).border, 0);
-      tiles.append(tile('경계 사례 (' + b.year + ')', fmt(border), '편', null, '', '추천 키워드는 있지만 AI가 "추천 아님"으로 판정 · ④에서 토글로 확인'));
+      tiles.append(tile('Borderline cases (' + b.year + ')', fmt(border), '', null, '', 'Have recommender keywords but judged "not a recommender paper" · toggle in ④'));
     }
 
     const ul = $('#sentences'); ul.replaceChildren();
@@ -88,7 +88,7 @@
 
     const ip = $('#inprog'); ip.replaceChildren();
     const rows = (S.in_progress || []).filter(r => r.done > 0 || Object.values(r.venues).some(s => s !== 'planned'));
-    if (!rows.length) ip.append(el('div', { class: 'empty', text: '기준 연도 이후에 집계가 시작된 연도가 없습니다.' }));
+    if (!rows.length) ip.append(el('div', { class: 'empty', text: 'No year after the basis year has started aggregation.' }));
     rows.forEach(r => {
       const vs = el('div', { class: 'vs' });
       VENUES.forEach(v => { const st = r.venues[v.id]; vs.append(el('span', {}, el('span', { class: 'sym ' + (st === 'done' ? 'done' : st === 'part' ? 'part' : 'plan') }), v.id)); });
@@ -104,7 +104,7 @@
       const tr = el('tr', {}, el('th', { scope: 'row' }, el('span', { class: 'vdot', style: 'background:' + colorOf(v.id) }), v.id));
       YEARS.forEach(y => {
         const c = cnt(v.id, y); const st = c.state === 'done' ? 'done' : c.state === 'part' ? 'part' : 'plan';
-        const txt = st === 'done' ? '완료 · core ' + fmt(c.core) + '편 / 전체 ' + fmt(c.total) + '편' : st === 'part' ? '집계 중 (' + (c.why || '') + ') · core ' + fmt(c.core) + '편' : '예정';
+        const txt = st === 'done' ? 'complete · core ' + fmt(c.core) + ' of ' + fmt(c.total) : st === 'part' ? 'in progress (' + (c.why || '') + ') · core ' + fmt(c.core) : 'planned';
         const btn = el('button', { type: 'button', class: st, title: v.id + ' ' + y + ' · ' + txt, 'aria-label': v.id + ' ' + y + ' ' + txt }, el('span', { class: 'sym ' + st, 'aria-hidden': 'true' }));
         if (st !== 'plan') btn.addEventListener('click', () => applyFilter({ venue: v.id, year: String(y), track: '', q: '' }));
         else btn.setAttribute('aria-disabled', 'true');
@@ -127,7 +127,7 @@
   }
   function syncControls() {
     document.querySelectorAll('#c-metric button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === C.metric)));
-    $('#c-table').setAttribute('aria-pressed', String(C.table)); $('#c-table').textContent = C.table ? '차트로 보기' : '표로 보기';
+    $('#c-table').setAttribute('aria-pressed', String(C.table)); $('#c-table').textContent = C.table ? 'Show as chart' : 'Show as table';
   }
   let lastW = 0;
   function renderFig1() {
@@ -136,14 +136,14 @@
     const relTxt = C.related ? 'core + related' : 'core';
     let title, sub, note;
     if (C.metric !== 'ratio') {
-      title = C.metric === 'count' ? '학회별 추천 논문 수' : '학회별 구성 (그해 추천 논문 = 100%)';
-      sub = '누적 막대 · ' + relTxt + ' · 집계가 끝난 학회만 · 한 논문은 한 학회에만 속함';
-      note = '막대를 누르면 ④가 해당 학회·연도로 열립니다. 흐린 막대의 "n/' + VENUES.length + '"는 합산된 학회 수입니다.';
+      title = C.metric === 'count' ? 'Recommender papers by venue' : 'Venue mix (recommender papers that year = 100%)';
+      sub = 'Stacked bars · ' + relTxt + ' · complete venues only · each paper belongs to one venue';
+      note = 'Click a bar to open that venue-year in ④. On faded bars, "n/' + VENUES.length + '" is the number of venues summed.';
       VENUES.forEach(v => leg.append(el('span', {}, el('span', { class: 'sw', style: 'background:' + colorOf(v.id) }), v.id)));
       drawStack(box);
     } else {
-      title = '학회 내 추천 비율'; sub = '추천 편수 ÷ 학회 전체 편수 (' + (S.counted_tracks || []).join('·') + ' 트랙) · 같은 세로축 · 전편 추천인 RecSys는 제외';
-      note = '학회 규모 변화를 걷어낸 값입니다. 점을 누르면 ④가 열립니다.';
+      title = 'Share within venue'; sub = 'recommender papers ÷ all papers at the venue (' + (S.counted_tracks || []).join(' · ') + ' tracks) · shared y-axis · RecSys excluded, all its papers count';
+      note = 'Removes the effect of venue size. Click a point to open ④.';
       drawMultiples(box);
     }
     $('#f1-title').textContent = title; $('#f1-sub').textContent = sub; $('#f1-note').textContent = note;
@@ -158,27 +158,27 @@
 
   function drawStack(box) {
     const rows = yearRows();
-    if (!rows.length) { box.append(el('div', { class: 'empty-state', text: '집계가 끝난 학회·연도가 아직 없습니다.' })); return; }
+    if (!rows.length) { box.append(el('div', { class: 'empty-state', text: 'No venue-year has completed aggregation yet.' })); return; }
     const W = chartW(box), H = W < 560 ? 276 : 336, m = { l: 44, r: 8, t: 22, b: 42 };
     const iw = W - m.l - m.r, ih = H - m.t - m.b, band = iw / rows.length, bw = Math.min(24, band * 0.56);
     const share = C.metric === 'share';
     const ticks = share ? [0, 0.25, 0.5, 0.75, 1] : niceTicks(Math.max(...rows.map(r => r.tot)), 4);
     const top = ticks[ticks.length - 1];
     const yS = v => m.t + ih - v / top * ih;
-    const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'group', 'aria-label': share ? '연도별 학회 구성 비율' : '연도별 학회별 추천 논문 수' });
+    const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'group', 'aria-label': share ? 'Venue mix by year' : 'Recommender papers by venue and year' });
     ticks.forEach(t => { svg.append(sv('line', { x1: m.l, x2: W - m.r, y1: yS(t), y2: yS(t), class: t === 0 ? 'axisl' : 'gridl' })); const tx = sv('text', { x: m.l - 8, y: yS(t) + 4, 'text-anchor': 'end', class: 'tick' }); tx.textContent = share ? Math.round(t * 100) + '%' : fmt(t); svg.append(tx); });
     rows.forEach((r, ri) => {
       const cx = m.l + band * (ri + 0.5); let cum = 0;
       r.segs.forEach((s, k) => {
         const v = share ? s.val / r.tot : s.val; const y0 = yS(cum), y1 = yS(cum + v); cum += v;
         const gap = k > 0 ? 2 : 0; const h = (y0 - gap) - y1; if (h <= 0.3) return;
-        const g = sv('g', { class: 'seg-hit', tabindex: '0', role: 'button', 'aria-label': r.y + '년 ' + s.v + ' ' + fmt(s.val) + '편' + (r.prov ? ' 잠정' : '') });
+        const g = sv('g', { class: 'seg-hit', tabindex: '0', role: 'button', 'aria-label': s.v + ' ' + r.y + ': ' + fmt(s.val) + ' papers' + (r.prov ? ' (provisional)' : '') });
         g.append(sv('rect', { x: cx - band / 2 + 1, y: y1, width: band - 2, height: h + gap, style: 'fill:transparent' }));
         const isTop = k === r.segs.length - 1;
         const mk = isTop ? sv('path', { d: roundTop(cx - bw / 2, y1, bw, h, 4) }) : sv('rect', { x: cx - bw / 2, y: y1, width: bw, height: h });
         mk.setAttribute('style', 'fill:' + s.c + ';' + (r.prov ? 'fill-opacity:.5' : ''));
         g.append(mk);
-        const tipFn = e => showTip(e && e.clientX != null ? e : g, r.y + ' · ' + s.v + (r.prov ? ' (잠정)' : ''), [{ c: s.c, name: s.v, value: fmt(s.val) + '편' }, { name: '그해 비중', value: p1(s.val / r.tot) }, { name: '그해 합계', value: fmt(r.tot) + '편' }], '눌러서 ④ 리스트 열기');
+        const tipFn = e => showTip(e && e.clientX != null ? e : g, r.y + ' · ' + s.v + (r.prov ? ' (provisional)' : ''), [{ c: s.c, name: s.v, value: fmt(s.val) }, { name: 'share that year', value: p1(s.val / r.tot) }, { name: 'total that year', value: fmt(r.tot) }], 'Click to open the list in ④');
         g.addEventListener('pointermove', tipFn); g.addEventListener('pointerleave', hideTip); g.addEventListener('focus', () => tipFn(null)); g.addEventListener('blur', hideTip);
         activate(g, () => applyFilter({ venue: s.v, year: String(r.y), track: '', q: '' }));
         svg.append(g);
@@ -195,12 +195,12 @@
     const vs = VENUES.filter(v => !v.all_core);
     const ratio = (v, y) => { const c = cnt(v, y); if (c.state === 'planned' || !c.total) return null; return (c.core + (C.related ? c.related : 0)) / c.total; };
     const years = YEARS.filter(y => vs.some(v => ratio(v.id, y) != null));
-    if (!years.length) { box.append(el('div', { class: 'empty-state', text: '데이터가 아직 없습니다.' })); return; }
+    if (!years.length) { box.append(el('div', { class: 'empty-state', text: 'No data yet.' })); return; }
     const max = Math.max(...vs.flatMap(v => years.map(y => ratio(v.id, y) || 0)), 0.01);
     const ticks = niceTicks(max, 2), top = ticks[ticks.length - 1];
     const cells = vs.map(v => {
       const last = years.map(y => ({ y, r: ratio(v.id, y), st: cnt(v.id, y).state })).filter(x => x.r != null).pop();
-      const txt = last ? last.y + ' ' + p1(last.r) + (last.st !== 'done' ? ' 집계 중' : '') : '데이터 없음';
+      const txt = last ? last.y + ' ' + p1(last.r) + (last.st !== 'done' ? ' in progress' : '') : 'no data';
       const c = el('div', { class: 'mult' }, el('h4', {}, el('span', {}, el('span', { class: 'vdot', style: 'background:' + colorOf(v.id) }), v.id), el('span', { text: txt })));
       grid.append(c); return [v, c];
     });
@@ -209,7 +209,7 @@
       const iw = W - m.l - m.r, ih = H - m.t - m.b;
       const n = years.length;
       const xS = i => m.l + (n > 1 ? iw * i / (n - 1) : iw / 2), yS = r => m.t + ih - r / top * ih;
-      const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'group', 'aria-label': v.id + ' 학회 내 추천 비율 추이' });
+      const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'group', 'aria-label': v.id + ' share of recommender papers over time' });
       ticks.forEach(t => { svg.append(sv('line', { x1: m.l, x2: W - m.r, y1: yS(t), y2: yS(t), class: t === 0 ? 'axisl' : 'gridl' })); const tx = sv('text', { x: m.l - 6, y: yS(t) + 4, 'text-anchor': 'end', class: 'tick', style: 'font-size:10px' }); tx.textContent = Math.round(t * 100) + '%'; svg.append(tx); });
       [0, n - 1].forEach(i => { const xl = sv('text', { x: xS(i), y: H - 4, 'text-anchor': i ? 'end' : 'start', class: 'tick', style: 'font-size:10px' }); xl.textContent = String(years[i]); svg.append(xl); });
       const pts = years.map((y, i) => { const r = ratio(v.id, y); return r == null ? null : { x: xS(i), y: yS(r), r, yr: y, done: cnt(v.id, y).state === 'done' }; });
@@ -227,7 +227,7 @@
       have.forEach(p => {
         const h = sv('circle', { cx: p.x, cy: p.y, r: 12, style: 'fill:transparent;cursor:pointer', tabindex: '0', role: 'button', 'aria-label': v.id + ' ' + p.yr + ' ' + p1(p.r) });
         const cc = cnt(v.id, p.yr);
-        const fn = e => showTip(e && e.clientX != null ? e : h, v.id + ' · ' + p.yr + (p.done ? '' : ' (집계 중)'), [{ c: colorOf(v.id), name: '학회 내 비율', value: p1(p.r) }, { name: '추천 / 전체', value: fmt(cc.core + (C.related ? cc.related : 0)) + ' / ' + fmt(cc.total) + '편' }], '눌러서 ④ 리스트 열기');
+        const fn = e => showTip(e && e.clientX != null ? e : h, v.id + ' · ' + p.yr + (p.done ? '' : ' (in progress)'), [{ c: colorOf(v.id), name: 'share within venue', value: p1(p.r) }, { name: 'rec / all', value: fmt(cc.core + (C.related ? cc.related : 0)) + ' / ' + fmt(cc.total) }], 'Click to open the list in ④');
         h.addEventListener('pointermove', fn); h.addEventListener('pointerleave', hideTip); h.addEventListener('focus', () => fn(null)); h.addEventListener('blur', hideTip);
         activate(h, () => applyFilter({ venue: v.id, year: String(p.yr), track: '', q: '' }));
         svg.append(h);
@@ -239,8 +239,8 @@
   function renderTable() {
     const box = $('#f1-table'); box.replaceChildren();
     const years = YEARS.filter(y => VENUES.some(v => cnt(v.id, y).state !== 'planned'));
-    const t = el('table', { class: 'data' }); const head = el('tr', {}, el('th', { text: '학회' }));
-    years.forEach(y => head.append(el('th', { text: doneVenues(y).length < VENUES.length ? y + ' (잠정)' : String(y) }))); t.append(el('thead', {}, head));
+    const t = el('table', { class: 'data' }); const head = el('tr', {}, el('th', { text: 'Venue' }));
+    years.forEach(y => head.append(el('th', { text: doneVenues(y).length < VENUES.length ? y + ' (prov.)' : String(y) }))); t.append(el('thead', {}, head));
     const tb = el('tbody');
     VENUES.forEach(v => {
       const tr = el('tr', {}, el('td', { text: v.id }));
@@ -254,9 +254,9 @@
       });
       tb.append(tr);
     });
-    if (C.metric === 'count') { const tr = el('tr', {}, el('td', { text: '합계 (완료 학회)', style: 'font-weight:600' })); years.forEach(y => tr.append(el('td', { text: fmt(doneVenues(y).reduce((a, x) => a + val(x, y), 0)), style: 'font-weight:600' }))); tb.append(tr); }
+    if (C.metric === 'count') { const tr = el('tr', {}, el('td', { text: 'Total (complete venues)', style: 'font-weight:600' })); years.forEach(y => tr.append(el('td', { text: fmt(doneVenues(y).reduce((a, x) => a + val(x, y), 0)), style: 'font-weight:600' }))); tb.append(tr); }
     t.append(tb); box.append(t);
-    box.append(el('p', { class: 'note', text: '* 집계 중인 학회·연도의 현재 값' }));
+    box.append(el('p', { class: 'note', text: '* current value of a venue-year still in progress' }));
   }
 
   /* ---------------- ④ ---------------- */
@@ -270,9 +270,9 @@
     const res = await p; cache.set(k, res); return res;
   }
   function fillSelects() {
-    const svn = $('#f-venue'); svn.append(el('option', { value: '', text: '전체' })); VENUES.forEach(v => svn.append(el('option', { value: v.id, text: v.id })));
-    const sy = $('#f-year'); sy.append(el('option', { value: '', text: '전체' })); [...YEARS].reverse().forEach(y => sy.append(el('option', { value: String(y), text: doneVenues(y).length < VENUES.length && doneVenues(y).length > 0 ? y + ' (잠정)' : String(y) })));
-    const st = $('#f-track'); st.append(el('option', { value: '', text: '전체 (기본 집계 트랙)' })); (S.counted_tracks || ['main', 'short', 'applied', 'resource']).forEach(t => st.append(el('option', { value: t, text: t })));
+    const svn = $('#f-venue'); svn.append(el('option', { value: '', text: 'All' })); VENUES.forEach(v => svn.append(el('option', { value: v.id, text: v.id })));
+    const sy = $('#f-year'); sy.append(el('option', { value: '', text: 'All' })); [...YEARS].reverse().forEach(y => sy.append(el('option', { value: String(y), text: doneVenues(y).length < VENUES.length && doneVenues(y).length > 0 ? y + ' (provisional)' : String(y) })));
+    const st = $('#f-track'); st.append(el('option', { value: '', text: 'All counted tracks' })); (S.counted_tracks || ['main', 'short', 'applied', 'resource']).forEach(t => st.append(el('option', { value: t, text: t })));
     const bind = (id, key, ev) => $(id).addEventListener(ev || 'change', e => { F[key] = e.target.type === 'checkbox' ? e.target.checked : e.target.value; F.shown = 30; renderList(); });
     bind('#f-venue', 'venue'); bind('#f-year', 'year'); bind('#f-track', 'track'); bind('#f-sort', 'sort'); bind('#f-q', 'q', 'input'); bind('#f-related', 'related'); bind('#f-border', 'border'); bind('#f-demo', 'demo');
     $('#f-reset').addEventListener('click', () => { Object.assign(F, { venue: '', year: S.basis && S.basis.year ? String(S.basis.year) : '', track: '', q: '', related: false, border: false, demo: false, shown: 30 }); syncFilters(); renderList(); });
@@ -327,11 +327,11 @@
     const order = { new: (a, b) => b.y - a.y || vOrder[a.v] - vOrder[b.v] || (a.title || '').localeCompare(b.title || ''), cite: (a, b) => (b.cites ?? -1) - (a.cites ?? -1), title: (a, b) => (a.title || '').localeCompare(b.title || '') };
     all.sort(order[F.sort] || order.new);
     const nb = all.filter(p => p.border).length, nd = all.filter(p => p.demo).length;
-    $('#f-count').textContent = fmt(all.length - nb - nd) + '편' + (nb ? ' + 경계 사례 ' + nb + '편' : '') + (nd ? ' + demo ' + nd + '편' : '');
+    $('#f-count').textContent = fmt(all.length - nb - nd) + ' papers' + (nb ? ' + ' + nb + ' borderline' : '') + (nd ? ' + ' + nd + ' demo' : '');
     box.replaceChildren();
     if (!all.length) {
       const partial = combos.some(([v, y]) => cnt(v, y).state === 'part');
-      box.append(el('div', { class: 'empty-state', text: partial ? '아직 판별이 끝나지 않았거나 조건에 맞는 논문이 없습니다. 집계 중인 학회는 다음 업데이트에서 채워집니다.' : '조건에 맞는 논문이 없습니다. 필터를 줄이거나 초기화해 보세요.' }));
+      box.append(el('div', { class: 'empty-state', text: partial ? 'Classification is not finished yet, or nothing matches. Venues in progress fill in with the next update.' : 'Nothing matches these filters. Try fewer filters or reset them.' }));
     }
     all.slice(0, F.shown).forEach(p => box.append(paperNode(p)));
     $('#f-more').hidden = all.length <= F.shown;
@@ -339,30 +339,30 @@
   function paperNode(p) {
     const n = el('article', { class: 'paper' + (p.border ? ' border' : '') });
     const meta = el('div', { class: 'meta' }, el('span', { class: 'ven' }, el('span', { class: 'vdot', style: 'background:' + colorOf(p.v) }), p.v + ' ' + p.y));
-    if (p.border) meta.append(el('span', { class: 'rel', text: '경계 사례 · 추천 아님' }));
+    if (p.border) meta.append(el('span', { class: 'rel', text: 'borderline · not a recommender paper' }));
     else {
       meta.append(el('span', { text: p.track || '' }));
       if (p.demo) meta.append(el('span', { class: 'rel', text: 'demo' }));
       if (p.label === 'related') meta.append(el('span', { class: 'rel', text: 'related' }));
       if (p.badge) meta.append(el('span', { class: 'badge' + (p.badge === 'spotlight' ? ' sp' : ''), text: p.badge }));
-      if (p.prov) meta.append(el('span', { text: '집계 중' }));
+      if (p.prov) meta.append(el('span', { text: 'in progress' }));
     }
     const href = p.url || (p.doi ? 'https://doi.org/' + p.doi : null);
     const ti = el('div', { class: 'ti' }); ti.append(href ? el('a', { href, target: '_blank', rel: 'noopener', text: p.title }) : document.createTextNode(p.title || ''));
     n.append(meta, ti);
     const au = p.authors || [];
-    n.append(el('div', { class: 'au', text: au.length > 6 ? au.slice(0, 6).join(' · ') + ' 외 ' + (au.length - 6) + '명' : au.join(' · ') }));
-    if (p.reason) n.append(el('div', { class: 'why', text: (p.border ? '판단 근거: ' : 'AI 판정 근거: ') + p.reason + (p.rejudged ? ' (상위 모델 재판정)' : '') }));
+    n.append(el('div', { class: 'au', text: au.length > 6 ? au.slice(0, 6).join(' · ') + ' and ' + (au.length - 6) + ' more' : au.join(' · ') }));
+    if (p.reason) n.append(el('div', { class: 'why', text: 'AI reasoning: ' + p.reason + (p.rejudged ? ' (re-judged by the larger model)' : '') }));
     const links = el('div', { class: 'links' });
     if (p.doi) links.append(el('a', { href: 'https://doi.org/' + p.doi, target: '_blank', rel: 'noopener', text: 'DOI' }));
     if (p.arxiv) links.append(el('a', { href: 'https://arxiv.org/abs/' + p.arxiv, target: '_blank', rel: 'noopener', text: 'arXiv' }));
     if (p.openreview) links.append(el('a', { href: 'https://openreview.net/forum?id=' + p.openreview, target: '_blank', rel: 'noopener', text: 'OpenReview' }));
-    if (p.cites != null) links.append(el('span', { class: 'muted', text: '인용 ' + fmt(p.cites) }));
+    if (p.cites != null) links.append(el('span', { class: 'muted', text: fmt(p.cites) + ' citations' }));
     n.append(links);
     return n;
   }
 
-  /* ---------------- 시작 ---------------- */
+  /* ---------------- start ---------------- */
   async function main() {
     try {
       const r = await fetch(DATA + 'summary.json', { cache: 'no-cache' });
@@ -371,13 +371,13 @@
     } catch (e) {
       $('#loading').hidden = true;
       const err = $('#load-error'); err.hidden = false;
-      err.textContent = '아직 데이터가 없습니다. 첫 업데이트(Actions → update)가 끝나면 표시됩니다. (' + e.message + ')';
+      err.textContent = 'No data yet. The site fills in once the first update (Actions → update) has finished. (' + e.message + ')';
       return;
     }
     VENUES = S.venues || []; YEARS = S.years || [];
     $('#loading').hidden = true;
     ['#overview', '#trend', '#papers'].forEach(s => { $(s).hidden = false; });
-    // GitHub Pages(https://<owner>.github.io/<repo>/) 주소에서 레포 주소를 유추해 Issue 링크를 만든다
+    // derive the repository from the GitHub Pages URL (https://<owner>.github.io/<repo>/) for the Issues link
     const m = location.host.match(/^([^.]+)\.github\.io$/); const seg = location.pathname.split('/').filter(Boolean)[0];
     $('#f-issue').href = (m && seg) ? 'https://github.com/' + m[1] + '/' + seg + '/issues/new/choose' : '#';
     renderOverview();

@@ -1,4 +1,4 @@
-"""pytest -q  (외부 API 없이 돈다)"""
+"""pytest -q  (runs without external APIs)"""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ from pipeline import aggregate, config, judge, venues
 from pipeline.utils import Report, write_json, write_jsonl
 
 
-# ---------- venues / 트랙 ----------
+# ---------- venues / tracks ----------
 
 def test_page_count():
     assert venues.page_count("1234-1245") == 12
@@ -27,12 +27,12 @@ def test_normalize_track_rules():
     assert venues.normalize_track(v, "Reproducibility Papers", "1-10") == ("resource", True)
     assert venues.normalize_track(v, "SIRIP: Industry Papers", "1-9") == ("applied", True)
     assert venues.normalize_track(v, "Keynote Talks", "1-2") == ("non_paper", True)
-    # 섹션은 main 이지만 2쪽이면 발표 초록
+    # section says main, but 2 pages means a talk abstract
     assert venues.normalize_track(v, "Full Papers", "3-4") == ("non_paper", True)
-    # 섹션 없음 → 쪽수 규칙
+    # no section → page-count rule
     assert venues.normalize_track(v, None, "1-5") == ("short", True)
     assert venues.normalize_track(v, None, "1-10") == ("main", True)
-    # 처음 보는 섹션 → 규칙 미매칭 표시
+    # unknown section → flagged as unmatched
     assert venues.normalize_track(v, "Mystery Block", "1-10") == ("main", False)
 
 
@@ -52,9 +52,9 @@ def test_source_for_mixed():
 # ---------- judge ----------
 
 def test_parse_json_variants():
-    assert judge.parse('{"label": "core", "confidence": "high", "reason": "순차 추천"}')["label"] == "core"
-    r = judge.parse('Sure:\n{"label":"Related","confidence":"LOW","reason":"광고 CTR"}\n')
-    assert r == {"label": "related", "confidence": "low", "reason": "광고 CTR"}
+    assert judge.parse('{"label": "core", "confidence": "high", "reason": "sequential rec"}')["label"] == "core"
+    r = judge.parse('Sure:\n{"label":"Related","confidence":"LOW","reason":"ad CTR"}\n')
+    assert r == {"label": "related", "confidence": "low", "reason": "ad CTR"}
     assert judge.parse('{"label": "maybe"}') is None
     assert judge.parse("no json") is None
 
@@ -74,7 +74,7 @@ def test_prompt_loads():
     assert "(not available)" in judge.build_user(template, p, None)
 
 
-# ---------- 집계 ----------
+# ---------- aggregation ----------
 
 NOW = datetime(2026, 11, 20, tzinfo=timezone.utc)
 
@@ -101,7 +101,7 @@ def _make_data(tmp: Path, cikm_2026: bool = False):
     if cikm_2026:
         write_json(raw / "CIKM-2026.json", {"venue": "CIKM", "year": 2026, "source": "dblp", "collected": "t", "volumes": ["x"], "sections": True, "papers": [_paper(i, "CIKM", 2026) for i in range(30)]})
     write_jsonl(tmp / "llm" / "judge.jsonl", rows)
-    # Sonnet 이 P0 을 related 로 뒤집음
+    # Sonnet flips P0 to related
     write_jsonl(tmp / "llm" / "rejudge.jsonl", [{"id": "dblp:conf/kdd/P2026_0", "label": "related", "confidence": "high", "reason": "s", "model": config.REJUDGE_MODEL, "pv": config.PROMPT_VERSION}])
 
 
@@ -110,29 +110,29 @@ def test_aggregate_end_to_end(tmp_path: Path):
     s = aggregate.build(tmp_path, NOW, Report("t"), validate=True)
     kdd26 = s["counts"]["KDD"]["2026"]
     assert kdd26["total"] == 100 and kdd26["core"] == 14 and kdd26["related"] == 6 and kdd26["border"] == 5
-    assert kdd26["state"] == "done"                      # 8월 학회, 11월이면 완료
-    assert s["counts"]["RecSys"]["2026"]["core"] == 40   # 전편 core
+    assert kdd26["state"] == "done"                      # August conference, complete by November
+    assert s["counts"]["RecSys"]["2026"]["core"] == 40   # all core
     assert s["counts"]["SIGIR"]["2026"]["state"] == "planned"
     papers = json.loads((tmp_path / "papers" / "KDD-2026.json").read_text())
     assert len(papers["papers"]) == 20 and len(papers["border"]) == 5 and len(papers["demo"]) == 1
     assert any(p.get("rejudged") for p in papers["papers"])
     assert (tmp_path / "status.json").exists() and (tmp_path / "changelog.json").exists()
-    # 기준 연도: 완료 학회가 2개뿐이라 6개 기준엔 못 미치고, 완료가 있는 가장 최근 연도로 떨어진다
+    # basis year: only 2 venues complete, below the 6-venue threshold, so it falls back to the latest year with any completion
     assert s["basis"]["year"] == 2026 and s["basis"]["kind"] == "provisional"
 
 
 def test_state_rules(tmp_path: Path):
     _make_data(tmp_path, cikm_2026=True)
     s = aggregate.build(tmp_path, NOW, Report("t"), validate=False)
-    # CIKM 11월 개최 → 11월 20일에는 아직 미경과
+    # CIKM is held in November → not yet past on November 20
     assert s["counts"]["CIKM"]["2026"]["state"] == "part"
-    # KDD 2026 은 볼륨 2개 기대, 2개 있음 → done. 2024 는 1개 기대
+    # KDD 2026 expects 2 volumes and has 2 → done; 2024 expects 1
     assert s["counts"]["KDD"]["2024"]["state"] == "done"
 
 
 def test_pending_blocks_done(tmp_path: Path):
     _make_data(tmp_path)
-    # 판정을 절반 지우면 '판별 대기'
+    # drop half the judgments → 'awaiting classification'
     rows = [json.loads(l) for l in (tmp_path / "llm" / "judge.jsonl").read_text().splitlines()]
     write_jsonl(tmp_path / "llm" / "judge.jsonl", rows[:150])
     s = aggregate.build(tmp_path, NOW, Report("t"), validate=False)
@@ -142,14 +142,14 @@ def test_pending_blocks_done(tmp_path: Path):
 def test_validation_blocks_big_drop(tmp_path: Path):
     _make_data(tmp_path)
     aggregate.build(tmp_path, NOW, Report("t"), validate=True)
-    # KDD 2025 를 절반으로 줄인 뒤 재집계 → 중단
+    # halve KDD 2025 and re-aggregate → blocked
     p = tmp_path / "raw" / "KDD-2025.json"
     raw = json.loads(p.read_text())
     raw["papers"] = raw["papers"][:50]
     write_json(p, raw)
     with pytest.raises(aggregate.ValidationError):
         aggregate.build(tmp_path, NOW, Report("t"), validate=True)
-    aggregate.build(tmp_path, NOW, Report("t"), validate=False)   # 건너뛰기는 가능
+    aggregate.build(tmp_path, NOW, Report("t"), validate=False)   # skipping is allowed
 
 
 def test_next_update():

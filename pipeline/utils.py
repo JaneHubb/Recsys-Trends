@@ -1,4 +1,4 @@
-"""HTTP(재시도·속도 제한), JSON/JSONL 입출력, 로깅, 실행 보고서."""
+"""HTTP (retries, rate limiting), JSON/JSONL I/O, logging, run report."""
 from __future__ import annotations
 
 import json
@@ -36,7 +36,7 @@ def today() -> datetime:
 
 
 class Http:
-    """requests.Session + 지수 백오프. 429의 Retry-After를 존중한다."""
+    """requests.Session + exponential backoff. Honors Retry-After on 429."""
 
     def __init__(self, min_interval: float = 1.0, headers: dict | None = None):
         self.s = requests.Session()
@@ -45,7 +45,7 @@ class Http:
             self.s.headers.update(headers)
         self.min_interval = min_interval
         self._last = 0.0
-        self.exhausted = 0          # 재시도를 다 쓴 요청 수. 2회 이상이면 이후 요청은 바로 실패시킨다 (소스가 죽었을 때 몇 시간을 허비하지 않도록)
+        self.exhausted = 0          # requests that used up all retries; after 2 the rest fail fast (do not burn hours on a dead source)
 
     def _throttle(self) -> None:
         wait = self.min_interval - (time.monotonic() - self._last)
@@ -55,18 +55,18 @@ class Http:
 
     def request(self, method: str, url: str, retries: int = 6, timeout: int = 90, **kw) -> requests.Response:
         if self.exhausted >= 2:
-            raise RuntimeError(f"{url.split('/')[2]}: 앞선 요청이 계속 실패해 건너뜁니다 (소스 장애로 보임)")
+            raise RuntimeError(f"{url.split('/')[2]}: skipping, earlier requests kept failing (source looks down)")
         delay = 2.0
         last_exc: Exception | None = None
         for attempt in range(retries):
             self._throttle()
             try:
                 r = self.s.request(method, url, timeout=timeout, **kw)
-            except requests.RequestException as e:   # 연결 오류는 4회까지만 재시도 (2+4+8+16초)
+            except requests.RequestException as e:   # connection errors: at most 4 retries (2+4+8+16 s)
                 last_exc = e
                 if attempt >= 3:
                     break
-                log.warning("%s %s 연결 오류 (%s), %.0fs 후 재시도", method, url[:80], e.__class__.__name__, delay)
+                log.warning("%s %s connection error (%s), retrying in %.0fs", method, url[:80], e.__class__.__name__, delay)
                 time.sleep(delay)
                 delay = min(delay * 2, 60)
                 continue
@@ -74,7 +74,7 @@ class Http:
                 ra = r.headers.get("Retry-After")
                 wait = float(ra) if ra and ra.isdigit() else delay
                 wait = min(max(wait, 1.0), 120) + random.uniform(0, 1)
-                log.warning("%s %s → %s, %.0fs 후 재시도 (%d/%d)", method, url[:80], r.status_code, wait, attempt + 1, retries)
+                log.warning("%s %s → %s, retrying in %.0fs (%d/%d)", method, url[:80], r.status_code, wait, attempt + 1, retries)
                 time.sleep(wait)
                 delay = min(delay * 2, 60)
                 continue
@@ -83,7 +83,7 @@ class Http:
         self.exhausted += 1
         if last_exc:
             raise last_exc
-        raise RuntimeError(f"{method} {url}: 재시도 {retries}회 후에도 실패")
+        raise RuntimeError(f"{method} {url}: still failing after {retries} retries")
 
     def get(self, url: str, **kw) -> requests.Response:
         return self.request("GET", url, **kw)
@@ -92,7 +92,7 @@ class Http:
         return self.request("POST", url, **kw)
 
 
-# ---------- 파일 ----------
+# ---------- files ----------
 
 def read_json(path: Path, default: Any = None) -> Any:
     try:
@@ -122,7 +122,7 @@ def read_jsonl(path: Path) -> list[dict]:
                     try:
                         rows.append(json.loads(line))
                     except json.JSONDecodeError:
-                        log.warning("%s: 깨진 줄 무시", path.name)
+                        log.warning("%s: skipping a malformed line", path.name)
     except FileNotFoundError:
         pass
     return rows
@@ -152,10 +152,10 @@ def write_jsonl(path: Path, rows: Iterable[dict]) -> int:
     return n
 
 
-# ---------- 실행 보고서 ----------
+# ---------- run report ----------
 
 class Report:
-    """실행 요약. state/last_report.md 로 저장되어 Actions 요약과 Issue 본문에 쓰인다."""
+    """Run summary. Saved as state/last_report.md and used in the Actions summary and Issue bodies."""
 
     def __init__(self, title: str):
         self.title = title
@@ -180,15 +180,15 @@ class Report:
         self.unknown_tracks[key] = self.unknown_tracks.get(key, 0) + n
 
     def render(self) -> str:
-        out = [f"## {self.title}", f"\n생성: {now_iso()}\n"]
+        out = [f"## {self.title}", f"\nGenerated: {now_iso()}\n"]
         out.extend(self.lines)
         if self.warnings:
-            out.append("\n### 경고\n")
+            out.append("\n### Warnings\n")
             out.extend(f"- ⚠️ {w}" for w in self.warnings)
         if self.unknown_tracks:
-            out.append("\n### 처음 보는 트랙(섹션) 이름 — venues.yaml 의 tracks 에 규칙을 추가해 주세요\n")
-            out.append("| 학회·연도 · 섹션 | 편수 | 임시 처리 |\n|---|---|---|")
-            out.extend(f"| {k} | {n} | 쪽수 규칙으로 main/short 처리 |" for k, n in sorted(self.unknown_tracks.items()))
+            out.append("\n### Unrecognized track (section) names — add a rule to `tracks` in venues.yaml\n")
+            out.append("| Venue-year · section | Papers | Interim handling |\n|---|---|---|")
+            out.extend(f"| {k} | {n} | main/short by page-count rule |" for k, n in sorted(self.unknown_tracks.items()))
         return "\n".join(out) + "\n"
 
     def save(self, state_dir: Path | None = None) -> Path:
@@ -198,9 +198,9 @@ class Report:
         p.write_text(self.render(), encoding="utf-8")
         if self.unknown_tracks:
             write_json(d / "unknown_tracks.json", self.unknown_tracks)
-            md = ["DBLP 목차에서 `venues.yaml` 의 `tracks` 규칙에 맞지 않는 섹션 이름이 나왔습니다. 해당 논문은 쪽수 규칙으로 main/short 로 집계했습니다.",
-                  "규칙을 추가하면 다음 실행부터 반영됩니다 (이 내용을 Claude 대화에 붙여넣으면 규칙을 만들어 줍니다).", "",
-                  "| 학회·연도 · 섹션 | 편수 |", "|---|---|"]
+            md = ["A DBLP table of contents contained section names that match no `tracks` rule in `venues.yaml`. Those papers were counted as main/short by the page-count rule.",
+                  "Adding a rule takes effect on the next run (paste this into a Claude conversation to get the rule written).", "",
+                  "| Venue-year · section | Papers |", "|---|---|"]
             md += [f"| {k} | {n} |" for k, n in sorted(self.unknown_tracks.items())]
             (d / "unknown_tracks.md").write_text("\n".join(md) + "\n", encoding="utf-8")
         else:

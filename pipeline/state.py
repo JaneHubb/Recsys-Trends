@@ -1,7 +1,7 @@
-"""파이프라인 상태 머신 (state/pipeline.json).
+"""Pipeline state machine (state/pipeline.json).
 
 phase: idle → judge_submitted → judged → rejudge_submitted → rejudged → (aggregate) → idle
-Batch 는 최대 24시간, Actions 작업은 최대 6시간이라 실행이 끊겨도 다음 실행이 이어받는다.
+A Batch can take up to 24 hours while an Actions job is capped at 6, so the next run picks up where this one stopped.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ DEFAULT = {
     "usage": {},            # {model: {input, output, cache_read, cache_write}}
     "spent_usd": 0.0,
     "estimate_usd": 0.0,
-    "deferred": 0,          # 예산 때문에 다음 실행으로 미룬 논문 수
+    "deferred": 0,          # papers pushed to the next run because of the budget cap
     "notes": [],
 }
 

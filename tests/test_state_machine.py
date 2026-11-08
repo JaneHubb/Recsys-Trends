@@ -1,4 +1,4 @@
-"""Batch API 를 가짜 클라이언트로 바꿔 상태 머신 전체(제출 → 수거 → 재판정 → 집계)를 돌린다."""
+"""Runs the whole state machine (submit → collect → re-judge → aggregate) against a fake Batch client."""
 from __future__ import annotations
 
 import json
@@ -34,7 +34,7 @@ class FakeBatches:
                 label, conf = "no", "high"
             if "Bandit" in title:
                 conf = "low"
-            text = json.dumps({"label": label, "confidence": conf, "reason": "가짜"})
+            text = json.dumps({"label": label, "confidence": conf, "reason": "fake"})
             yield NS(custom_id=req["custom_id"], result=NS(type="succeeded", message=NS(
                 content=[NS(text=text)], usage=NS(input_tokens=900, output_tokens=40, cache_read_input_tokens=100, cache_creation_input_tokens=0))))
 
@@ -80,18 +80,18 @@ def test_full_cycle(tmp_path: Path, monkeypatch):
     assert all("kw" in j and "abs" in j for j in judged)
     rejudged = read_jsonl(tmp_path / "data" / "llm" / "rejudge.jsonl")
     low = [j for j in judged if j["confidence"] == "low"]
-    assert len(rejudged) >= len(low) > 0                      # 저확신 전부 + 품질 표본
+    assert len(rejudged) >= len(low) > 0                      # all low-confidence + quality sample
     q = json.loads((tmp_path / "data" / "quality.json").read_text())["latest"]
-    assert q["n_sample"] > 0 and q["agreement"] == 1.0         # 같은 가짜 판정이라 일치율 1.0
+    assert q["n_sample"] > 0 and q["agreement"] == 1.0         # same fake judgments, so agreement is 1.0
     summary = json.loads((tmp_path / "data" / "summary.json").read_text())
-    assert summary["counts"]["KDD"]["2026"]["core"] == 6       # 'Recommend' 포함 제목 6편 ('Bandit Recommendation' 포함)
+    assert summary["counts"]["KDD"]["2026"]["core"] == 6       # 6 titles contain 'Recommend' (incl. 'Bandit Recommendation')
     assert summary["counts"]["KDD"]["2026"]["related"] == 6
     assert summary["counts"]["RecSys"]["2026"]["core"] == 1
     assert not (tmp_path / "state" / "pending_extra.json").exists()
     assert report.deploy and (tmp_path / "data" / "meta.json").exists()
-    assert st["spent_usd"] == 0.0 and "비용" in st["notes"][-1]      # reset 뒤 새 상태
+    assert st["spent_usd"] == 0.0 and "cost" in st["notes"][-1]      # fresh state after reset
 
-    # 두 번째 실행: 전부 캐시되어 제출할 것이 없다
+    # second run: everything cached, nothing to submit
     st2 = state.load()
     assert not run.cmd_judge_submit(pairs, abstracts, st2, Report("t2"), force=False, dry_run=False)
 
@@ -100,14 +100,14 @@ def test_budget_defers(tmp_path: Path, monkeypatch):
     fake, abstracts = _setup(tmp_path, monkeypatch)
     monkeypatch.setattr(judge, "estimate", lambda papers, abstracts, model, system, template: (0.001 * len(papers), 0, 0))
     reserve = (36 * 0.03 + 6) * run.SONNET_PER_PAPER_USD
-    monkeypatch.setattr(config, "MAX_RUN_USD", reserve + 0.0185)   # 2026년 18편만 들어가는 예산
+    monkeypatch.setattr(config, "MAX_RUN_USD", reserve + 0.0185)   # budget that fits only the 18 papers of 2026
     st = state.load()
     report = Report("t")
     run.cmd_judge_submit([("KDD", 2025), ("KDD", 2026)], abstracts, st, report, force=False, dry_run=False)
     assert st["deferred"] > 0
     submitted = fake.messages.batches.store[st["batches"][0]]
     years = {json.loads(open(tmp_path / "state" / "pending_extra.json").read())[r["custom_id"]]["id"].split("K")[1][:4] for r in submitted}
-    assert years == {"2026"}                                   # 최신 연도 우선
+    assert years == {"2026"}                                   # newest year first
 
 
 def test_dry_run_submits_nothing(tmp_path: Path, monkeypatch):
@@ -130,7 +130,7 @@ def test_all_errored_batch_aborts_and_keeps_state(tmp_path: Path, monkeypatch):
     import pytest
     with pytest.raises(RuntimeError):
         run.cmd_advance(st, Report("t"), wait_minutes=0, validate=False)
-    assert state.load()["phase"] == "judge_submitted"          # 상태 유지 → 원인 수정 후 advance 로 재수거
+    assert state.load()["phase"] == "judge_submitted"          # state kept → fix the cause, then advance re-collects
     assert not (tmp_path / "data" / "llm" / "judge.jsonl").exists()
 
 
@@ -142,4 +142,4 @@ def test_preflight_bad_model(monkeypatch):
     with pytest.raises(SystemExit):
         judge.preflight(cl, ["nope"])
     ok = NS(models=NS(retrieve=lambda m: NS(id=m)))
-    judge.preflight(ok, ["claude-haiku-5-5"])   # 예외 없음
+    judge.preflight(ok, ["claude-haiku-5-5"])   # no exception

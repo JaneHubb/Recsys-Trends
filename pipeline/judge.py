@@ -1,8 +1,8 @@
-"""추천 논문 판별: Claude Batch API.
+"""Recommender-paper classification with the Claude Message Batches API.
 
-- 요청 1건 = 논문 1편 (Haiku 5.5 는 요청이 10만 토큰을 넘으면 단가가 5배라 묶지 않는다)
-- 시스템 프롬프트에 cache_control 을 붙여 두지만, 캐시 최소 길이(Haiku 2048토큰)보다 짧으면 적용되지 않는다 (무해)
-- 결과: data/llm/judge.jsonl (Haiku), data/llm/rejudge.jsonl (Sonnet). 캐시 키 = (id, prompt_version, model)
+- One request = one paper (Haiku 5.5 charges 5x once a request exceeds 100k tokens, so papers are never bundled)
+- The system prompt carries cache_control, but it is shorter than the cache minimum (2048 tokens for Haiku), so caching does not engage (harmless)
+- Output: data/llm/judge.jsonl (Haiku), data/llm/rejudge.jsonl (Sonnet). Cache key = (id, prompt_version, model)
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def build_user(template: str, paper: dict, abstract: str | None) -> str:
 
 
 def safe_cid(pid: str) -> str:
-    """Batch custom_id 는 [A-Za-z0-9_-]{1,64} 만 허용된다. 원래 id 는 pending_extra.json 에 함께 저장한다"""
+    """Batch custom_id allows only [A-Za-z0-9_-]{1,64}. The original id is stored alongside in pending_extra.json."""
     san = re.sub(r"[^A-Za-z0-9_-]", "_", pid)[:52]
     return f"{san}_{hashlib.sha1(pid.encode()).hexdigest()[:8]}"
 
@@ -55,7 +55,7 @@ def build_request(paper: dict, abstract: str | None, model: str, system: str, te
 
 
 def estimate(papers: list[dict], abstracts: dict[str, str], model: str, system: str, template: str) -> tuple[float, int, int]:
-    """(USD, 입력 토큰, 출력 토큰). 시스템 프롬프트는 캐시 최소 길이(Haiku 2048토큰)보다 짧아 캐시되지 않는다고 보고 전부 센다"""
+    """(USD, input tokens, output tokens). The system prompt is below the cache minimum (2048 tokens for Haiku), so it is counted in full."""
     sys_tok = cost.tokens(system)
     tin = tout = 0
     for p in papers:
@@ -91,21 +91,21 @@ def parse(text: str) -> dict | None:
 def client():
     import os
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise SystemExit("ANTHROPIC_API_KEY 가 설정되지 않았습니다 (Settings → Secrets → Actions)")
+        raise SystemExit("ANTHROPIC_API_KEY is not set (Settings → Secrets and variables → Actions)")
     from anthropic import Anthropic
     return Anthropic(max_retries=5)
 
 
 def preflight(cl, models: list[str]) -> None:
-    """모델 ID 가 틀리면 5시간 뒤가 아니라 지금 실패하도록 미리 확인한다"""
+    """Fail now, not five hours later, if a model id is wrong."""
     for m in models:
         try:
             cl.models.retrieve(m)
         except Exception as e:  # noqa: BLE001
             name = e.__class__.__name__
             if "NotFound" in name or "404" in str(e):
-                raise SystemExit(f"모델 '{m}' 을 찾을 수 없습니다. pipeline/config.py 의 JUDGE_MODEL / REJUDGE_MODEL 을 확인하세요 ({e})")
-            log.warning("모델 확인 생략 (%s: %s)", name, str(e)[:100])
+                raise SystemExit(f"Model '{m}' not found. Check JUDGE_MODEL / REJUDGE_MODEL in pipeline/config.py ({e})")
+            log.warning("Model check skipped (%s: %s)", name, str(e)[:100])
 
 
 def submit(cl, requests_: list[dict], on_batch=None) -> list[str]:
@@ -113,7 +113,7 @@ def submit(cl, requests_: list[dict], on_batch=None) -> list[str]:
     for i in range(0, len(requests_), config.BATCH_CHUNK):
         chunk = requests_[i:i + config.BATCH_CHUNK]
         b = cl.messages.batches.create(requests=chunk)
-        log.info("Batch 제출 %s (%d건)", b.id, len(chunk))
+        log.info("Batch submitted %s (%d requests)", b.id, len(chunk))
         ids.append(b.id)
         if on_batch:
             on_batch(b.id)
@@ -136,7 +136,7 @@ def status(cl, batch_ids: list[str]) -> dict:
 
 def collect_results(cl, batch_ids: list[str], paper_index: dict[str, dict], model: str, prompt_version: str,
                     extra: dict[str, dict] | None = None) -> tuple[list[dict], list[dict], dict]:
-    """(판정 행, 오류 행, usage 합계)"""
+    """(judgment rows, error rows, usage totals)"""
     rows: list[dict] = []
     errors: list[dict] = []
     usage = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
@@ -165,7 +165,7 @@ def collect_results(cl, batch_ids: list[str], paper_index: dict[str, dict], mode
 
 
 def load_cache(path: Path, model: str, prompt_version: str) -> dict[str, dict]:
-    """같은 (모델, 프롬프트 버전)의 최신 판정만"""
+    """Latest judgment per id for the given (model, prompt version) only."""
     from .utils import read_jsonl
     out: dict[str, dict] = {}
     for r in read_jsonl(path):

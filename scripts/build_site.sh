@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 정적 사이트 조립: site/ + data/{summary,status,papers} → _site/
-# 사용: bash scripts/build_site.sh [데이터 루트, 기본 .]   (sample 을 주면 sample/data 를 쓴다)
+# Assemble the static site: site/ + data/{summary,status,papers} → _site/
+# Usage: bash scripts/build_site.sh [data root, default .]   (pass "sample" to use sample/data)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BASE="${1:-$ROOT}"

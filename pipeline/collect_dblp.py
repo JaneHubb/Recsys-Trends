@@ -1,7 +1,7 @@
-"""DBLP 수집: 검색 API(JSON)로 목차 전체를 받고, 목차 HTML에서 섹션(트랙)을 보강한다.
+"""DBLP collection: the full table of contents via the search API (JSON), plus section (track) names from the TOC HTML.
 
-- 목차 하나 = bht 키 (예: db/conf/kdd/kdd2024.bht). 학회·연도별 후보를 모두 시도하고 논문 키로 중복 제거한다.
-- 섹션 보강은 선택 사항이다. DBLP 웹페이지에 봇 차단이 걸려 있으면 건너뛰고 쪽수 규칙으로 트랙을 정한다.
+- One TOC = one bht key (e.g. db/conf/kdd/kdd2024.bht). All candidates for a venue-year are tried and de-duplicated by paper key.
+- Section enrichment is optional. If the DBLP web page is behind bot protection it is skipped and tracks come from the page-count rule.
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def toc_keys(vcfg: dict, year: int) -> list[str]:
 
 
 def fetch_toc(http: Http, bht: str) -> list[dict]:
-    """목차의 모든 항목(원본 info dict)을 돌려준다. 없으면 []"""
+    """All entries of a TOC (raw info dicts); [] if the TOC does not exist."""
     hits: list[dict] = []
     first = 0
     while True:
@@ -48,16 +48,16 @@ def fetch_toc(http: Http, bht: str) -> list[dict]:
 
 
 def fetch_sections(http: Http, bht: str, report: Report) -> dict[str, tuple[str | None, str | None]]:
-    """목차 HTML에서 논문 키 → (h2 섹션, h3 섹션). 실패하면 {}"""
+    """paper key → (h2 section, h3 section) from the TOC HTML; {} on failure."""
     url = f"{config.DBLP_WEB}/{bht[len('db/'):-len('.bht')]}.html"
     try:
         r = http.get(url, headers={"Accept": "text/html"}, retries=2, timeout=60)
     except Exception as e:  # noqa: BLE001
-        report.warn(f"DBLP 목차 HTML 실패 ({bht}): {e.__class__.__name__}. 쪽수 규칙으로 대체")
+        report.warn(f"DBLP TOC HTML failed ({bht}): {e.__class__.__name__}. Falling back to the page-count rule")
         return {}
     if r.status_code != 200 or "publ-list" not in r.text:
-        hint = "봇 차단(Anubis)으로 보임" if ("Anubis" in r.text or r.status_code in (403, 503)) else f"HTTP {r.status_code}"
-        report.warn(f"DBLP 목차 HTML 사용 불가 ({bht}): {hint}. 쪽수 규칙으로 대체")
+        hint = "looks like bot protection (Anubis)" if ("Anubis" in r.text or r.status_code in (403, 503)) else f"HTTP {r.status_code}"
+        report.warn(f"DBLP TOC HTML unavailable ({bht}): {hint}. Falling back to the page-count rule")
         return {}
     soup = BeautifulSoup(r.text, "html.parser")
     out: dict[str, tuple[str | None, str | None]] = {}
@@ -81,7 +81,7 @@ def _record(info: dict, vid: str, year: int, bht: str) -> dict | None:
     title = (info.get("title") or "").strip()
     title = re.sub(r"\.$", "", title)
     authors = [a.get("text", "") if isinstance(a, dict) else str(a) for a in _as_list((info.get("authors") or {}).get("author"))]
-    authors = [re.sub(r"\s+\d{4}$", "", a).strip() for a in authors if a]   # 'Name 0001' 동명이인 접미사 제거
+    authors = [re.sub(r"\s+\d{4}$", "", a).strip() for a in authors if a]   # drop the 'Name 0001' disambiguation suffix
     doi = info.get("doi")
     ee = info.get("ee")
     return {
@@ -106,7 +106,7 @@ def collect(http: Http, vcfg: dict, year: int, report: Report, with_sections: bo
     for bht in toc_keys(vcfg, year):
         hits = fetch_toc(http, bht)
         if not hits:
-            log.info("%s %d: %s 없음", vid, year, bht)
+            log.info("%s %d: %s not found", vid, year, bht)
             continue
         volumes.append(bht)
         secs = fetch_sections(http, bht, report) if with_sections else {}
@@ -132,5 +132,5 @@ def collect(http: Http, vcfg: dict, year: int, report: Report, with_sections: bo
             rec["track"] = track
             papers[rec["id"]] = rec
             n_new += 1
-        log.info("%s %d: %s → %d편 (섹션 %s)", vid, year, bht, n_new, "있음" if secs else "없음")
+        log.info("%s %d: %s → %d papers (sections %s)", vid, year, bht, n_new, "yes" if secs else "no")
     return {"papers": list(papers.values()), "volumes": volumes, "sections": sections_ok}

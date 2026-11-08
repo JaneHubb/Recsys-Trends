@@ -1,6 +1,6 @@
-"""집계: 원본(raw) + 판정(llm) → status.json, summary.json, papers/*.json, changelog.json
+"""Aggregation: raw records + LLM judgments → status.json, summary.json, papers/*.json, changelog.json
 
-모든 계산을 메모리에서 끝낸 뒤 검증을 통과해야 파일을 쓴다 (이상한 데이터가 배포되지 않게).
+Everything is computed in memory first; files are written only after validation passes (so bad data never deploys).
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ class ValidationError(Exception):
     pass
 
 
-# ---------- 입력 ----------
+# ---------- inputs ----------
 
 def load_raw(data_dir: Path) -> dict[tuple[str, int], dict]:
     out: dict[tuple[str, int], dict] = {}
@@ -30,7 +30,7 @@ def load_raw(data_dir: Path) -> dict[tuple[str, int], dict]:
 
 
 def load_judgments(data_dir: Path) -> dict[str, dict]:
-    """Haiku 판정 위에 Sonnet 재판정을 덮는다. 현재 프롬프트 버전만 쓴다"""
+    """Sonnet re-judgments override Haiku judgments. Only the current prompt version is used."""
     out: dict[str, dict] = {}
     for r in read_jsonl(data_dir / "llm" / "judge.jsonl"):
         if r.get("pv") == config.PROMPT_VERSION and r.get("model") == config.JUDGE_MODEL and r.get("label") in judge.LABELS:
@@ -42,7 +42,7 @@ def load_judgments(data_dir: Path) -> dict[str, dict]:
     return out
 
 
-# ---------- 일정 ----------
+# ---------- schedule ----------
 
 def next_update(now: datetime) -> str:
     cands = []
@@ -56,7 +56,7 @@ def next_update(now: datetime) -> str:
 
 
 def month_passed(now: datetime, year: int, month: int) -> bool:
-    """개최월 + 1개월이 지났는가 (예: 8월 학회 → 10월 1일부터 True)"""
+    """Has conference month + 1 passed? (e.g. an August conference → True from October 1)"""
     m, y = month + 2, year
     if m > 12:
         m -= 12
@@ -64,30 +64,30 @@ def month_passed(now: datetime, year: int, month: int) -> bool:
     return (now.year, now.month) >= (y, m)
 
 
-# ---------- 집계 상태 ----------
+# ---------- completion state ----------
 
 def compute_state(vcfg: dict, year: int, raw: dict | None, counted: int, pending: int, prev_counted: int | None, now: datetime) -> tuple[str, str]:
-    """('done'|'part'|'planned', 이유)"""
+    """('done'|'part'|'planned', reason)"""
     if year > now.year:
-        return "planned", "미래 연도"
+        return "planned", "future year"
     if not raw or counted == 0:
         if year == now.year and not month_passed(now, year, vcfg["month"]):
-            return "planned", "개최 전"
-        return "planned", "목록 없음"
+            return "planned", "not held yet"
+        return "planned", "no listing"
     if pending > max(5, counted * 0.02):
-        return "part", f"판별 대기 {pending}편"
+        return "part", f"{pending} awaiting classification"
     if vcfg.get("complete_rule", "date") == "date" and not month_passed(now, year, vcfg["month"]):
-        return "part", "개최 후 1개월 미경과"
+        return "part", "less than a month since the conference"
     exp = venues.expected_volumes(vcfg, year) if venues.source_for(vcfg, year) == "dblp" else 1
     found = len(raw.get("volumes") or [])
     if found < exp and not (prev_counted and counted >= 0.9 * prev_counted):
-        return "part", f"볼륨 {found}/{exp}"
+        return "part", f"volumes {found}/{exp}"
     if prev_counted and counted < 0.7 * prev_counted:
-        return "part", f"전년의 {counted / prev_counted:.0%}뿐"
-    return "done", "완료"
+        return "part", f"only {counted / prev_counted:.0%} of previous year"
+    return "done", "complete"
 
 
-# ---------- 본체 ----------
+# ---------- main ----------
 
 def build(data_dir: Path, now: datetime, report: Report, validate: bool = True, run_kind: str = "update") -> dict:
     cfg = venues.load()
@@ -152,9 +152,9 @@ def build(data_dir: Path, now: datetime, report: Report, validate: bool = True, 
             if st == "done":
                 prev_counted = len(papers)
             elif len(papers):
-                prev_counted = prev_counted  # 미완료 연도는 전년 기준으로 삼지 않는다
+                prev_counted = prev_counted  # an incomplete year is not used as the previous-year baseline
 
-    # 기준 연도
+    # basis year
     n_venues = len(vlist)
     min_done = max(1, round(n_venues * 0.75))
     done_by_year = {y: [v["id"] for v in vlist if status[v["id"]][str(y)]["state"] == "done"] for y in years}
@@ -198,7 +198,7 @@ def build(data_dir: Path, now: datetime, report: Report, validate: bool = True, 
         "changelog": changelog[-6:][::-1],
     }
 
-    # ---------- 쓰기 ----------
+    # ---------- write ----------
     write_json(data_dir / "status.json", new_status)
     write_json(data_dir / "summary.json", summary)
     write_json(data_dir / "changelog.json", changelog)
@@ -206,8 +206,8 @@ def build(data_dir: Path, now: datetime, report: Report, validate: bool = True, 
     pdir.mkdir(parents=True, exist_ok=True)
     for (vid, y), obj in papers_out.items():
         write_json(pdir / f"{vid}-{y}.json", obj, indent=0)
-    report.section("집계")
-    report.info(f"기준 연도 {basis_year} ({basis['kind']}, {basis['done']}/{n_venues}) · 추천 논문(core) {overview.get('core', 0):,}편")
+    report.section("Aggregation")
+    report.info(f"Basis year {basis_year} ({basis['kind']}, {basis['done']}/{n_venues}) · recommender papers (core) {overview.get('core', 0):,}")
     for v in vlist:
         row = status[v["id"]]
         parts = [f"{y}:{row[y]['state'][0]}{row[y]['core']}" for y in row if row[y]["state"] != "planned"]
@@ -263,23 +263,23 @@ def _overview(vlist: list[dict], status: dict, basis_year: int | None, done_by_y
 def _sentences(basis: dict, ov: dict, now: datetime) -> list[str]:
     out: list[str] = []
     if not basis.get("year") or not ov:
-        return ["아직 집계가 끝난 학회가 없습니다. 첫 업데이트가 끝나면 요약이 표시됩니다."]
+        return ["No venue has completed aggregation yet. The summary appears after the first update finishes."]
     y = basis["year"]
     if ov.get("delta") is not None and ov.get("compare_venues"):
         d = ov["delta"]
-        out.append(f"{y}년 추천 논문은 비교 가능한 {len(ov['compare_venues'])}개 학회 기준 "
-                   f"{ov['compare_prev_core']:,}편 → {ov['compare_core']:,}편 ({'+' if d >= 0 else ''}{d * 100:.1f}%).")
+        out.append(f"Recommender papers in {y}: {ov['compare_prev_core']:,} → {ov['compare_core']:,} "
+                   f"({'+' if d >= 0 else ''}{d * 100:.1f}%) across the {len(ov['compare_venues'])} venues complete in both years.")
     if ov.get("ratio_median") is not None and ov.get("ratio_median_prev") is not None:
         r0, r1 = ov["ratio_median_prev"] * 100, ov["ratio_median"] * 100
-        trend = "제자리" if abs(r1 - r0) < 1 else ("올랐습니다" if r1 > r0 else "내렸습니다")
-        out.append(f"학회 내 추천 비율(중앙값)은 {r0:.1f}% → {r1:.1f}%로 {trend}.")
+        trend = "flat" if abs(r1 - r0) < 1 else ("up" if r1 > r0 else "down")
+        out.append(f"Median share of recommender papers within a venue: {r0:.1f}% → {r1:.1f}% ({trend}).")
     if basis.get("kind") == "provisional" and basis.get("missing"):
-        out.append(f"{', '.join(basis['missing'])} 집계 중 · {next_update(now)} 업데이트에 반영 예정.")
+        out.append(f"{', '.join(basis['missing'])} still in progress · included in the {next_update(now)} update.")
     return out
 
 
 def _validate(old: dict, new: dict) -> None:
-    """완료된 학회·연도의 편수가 20% 넘게 바뀌거나, 전체가 50% 넘게 줄면 중단"""
+    """Abort if a completed venue-year changes by more than 20%, or the overall total drops by more than 50%."""
     problems = []
     old_total = new_total = 0
     for vid, years in old.items():
@@ -292,12 +292,12 @@ def _validate(old: dict, new: dict) -> None:
             if o.get("state") == "done" and o.get("total", 0) >= 20:
                 change = n["total"] / o["total"] - 1
                 if abs(change) > 0.2:
-                    problems.append(f"{vid} {y}: 전체 편수 {o['total']} → {n['total']} ({change:+.0%})")
+                    problems.append(f"{vid} {y}: total {o['total']} → {n['total']} ({change:+.0%})")
     if old_total >= 100 and new_total < 0.5 * old_total:
-        problems.append(f"전체 편수 {old_total} → {new_total}")
+        problems.append(f"overall total {old_total} → {new_total}")
     if problems:
-        raise ValidationError("배포 중단 — 이전 집계와 크게 다릅니다:\n" + "\n".join(problems) +
-                              "\n원인을 확인한 뒤 수동 실행에서 '검증 건너뛰기'로 다시 돌릴 수 있습니다.")
+        raise ValidationError("Deploy blocked — counts differ sharply from the previous aggregation:\n" + "\n".join(problems) +
+                              "\nAfter checking the cause, rerun manually with 'skip_validation'.")
 
 
 def _changelog_entry(old: dict, new: dict, kind: str, now: datetime) -> dict:

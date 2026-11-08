@@ -1,8 +1,8 @@
-"""OpenReview 수집 (ICLR 전체, NeurIPS 2021~). API v1·v2 모두 처리한다.
+"""OpenReview collection (all ICLR years, NeurIPS 2021+). Handles API v1 and v2.
 
-- v2 (content.venueid=...): 채택 논문만 돌아온다. 발표 형태는 content.venue.value ("ICLR 2025 oral" 등)
-- v1 (invitation=.../Blind_Submission&details=directReplies): 거절 논문도 섞여 있어 결정 노트나 venue 문자열로 거른다
-- 초록은 work 디렉터리에만 두고 레포에는 저장하지 않는다
+- v2 (content.venueid=...): returns accepted papers only. Presentation type is in content.venue.value ("ICLR 2025 oral" etc.)
+- v1 (invitation=.../Blind_Submission&details=directReplies): includes rejected papers, filtered via decision notes or the venue string
+- Abstracts stay in the work directory and are never stored in the repository
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from .utils import Http, Report, log
 
 
 def _v(x):
-    """v2는 {'value': ...}, v1은 값 그대로"""
+    """v2 wraps values as {'value': ...}; v1 returns them bare."""
     if isinstance(x, dict) and "value" in x:
         return x["value"]
     return x
@@ -29,7 +29,7 @@ def _badge(text: str | None) -> str | None:
 
 
 def _accepted_v1(note: dict, conf_id: str) -> tuple[bool, str | None]:
-    """(채택 여부, 발표 형태 문자열)"""
+    """(accepted?, presentation-type string)"""
     c = note.get("content", {})
     venueid = _v(c.get("venueid"))
     venue = _v(c.get("venue")) or ""
@@ -117,16 +117,16 @@ def collect(http: Http, vcfg: dict, year: int, orcfgs: list[dict], report: Repor
             if ab:
                 abstracts[pid] = str(ab)
             n_new += 1
-        log.info("%s %d: %s → %d편 (응답 %d)", vid, year, key, n_new, len(notes))
+        log.info("%s %d: %s → %d papers (%d notes returned)", vid, year, key, n_new, len(notes))
         if n_new:
             volumes.append(key)
         elif notes:
-            report.warn(f"{vid} {year}: {key} 응답 {len(notes)}건 중 채택 판정 0편. venues.yaml 의 openreview 설정을 확인")
+            report.warn(f"{vid} {year}: {key} returned {len(notes)} notes but none judged accepted. Check the openreview settings in venues.yaml")
     return {"papers": list(papers.values()), "abstracts": abstracts, "volumes": volumes}
 
 
 def fetch_abstracts(http: Http, note_ids: list[str]) -> dict[str, str]:
-    """재판정용: 노트 id로 초록만 다시 받는다 (v2 → v1 순)"""
+    """For re-judging: fetch abstracts again by note id (v2 first, then v1)."""
     out: dict[str, str] = {}
     for nid in note_ids:
         for base in (config.OPENREVIEW_V2, config.OPENREVIEW_V1):
@@ -141,5 +141,5 @@ def fetch_abstracts(http: Http, note_ids: list[str]) -> dict[str, str]:
                         out[f"or:{nid}"] = str(ab)
                     break
             except Exception as e:  # noqa: BLE001
-                log.warning("OpenReview 초록 재조회 실패 %s: %s", nid, e)
+                log.warning("OpenReview abstract refetch failed %s: %s", nid, e)
     return out

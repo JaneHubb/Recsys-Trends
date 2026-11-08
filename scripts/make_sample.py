@@ -1,10 +1,10 @@
-"""가상 예시 데이터로 전체 집계·사이트를 미리 본다 (외부 API·LLM 없이).
+"""Preview the whole aggregation and site with synthetic data (no external APIs, no LLM).
 
-  python scripts/make_sample.py            → sample/ 디렉터리에 raw·llm 생성 후 집계
-  bash scripts/build_site.sh sample        → _site/ 에 사이트 조립
+  python scripts/make_sample.py            → writes raw + llm files to sample/ and aggregates
+  bash scripts/build_site.sh sample        → assembles the site in _site/
   python -m http.server -d _site 8000      → http://localhost:8000
 
-모든 수치·제목·저자는 가상이다.
+Every number, title and author is fictional.
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ METHODS = ["Graph Neural Networks for", "Contrastive Learning for", "Large Langu
 TASKS = ["Sequential Recommendation", "Top-N Recommendation", "Click-Through Rate Prediction", "Conversational Recommendation", "Cross-Domain Recommendation", "Cold-Start Recommendation", "Bundle Recommendation", "Next-POI Recommendation"]
 OTHER = ["Dense Retrieval with Hard Negatives", "Scaling Laws for Vision Transformers", "Robust Graph Learning under Noise", "Efficient Attention for Long Documents", "Causal Discovery from Observational Data", "Federated Optimization with Heterogeneous Clients"]
 RELATED = ["Bid Shading for First-Price Display Advertising", "Learning to Rank for Web Search with Click Models", "Personalized Text Generation with Retrieval-Augmented LLMs", "Query Auto-Completion with Session Context"]
-BORDER = [("User Intent Modeling for E-commerce Search", "검색 의도 모델링 · 추천 언급 없음"), ("Counterfactual Estimation for Ad Click Logs", "광고 로그 반사실 추정"), ("Link Prediction on Bipartite Interaction Graphs", "일반 링크 예측 · 추천 데이터셋만 사용")]
+BORDER = [("User Intent Modeling for E-commerce Search", "search intent modeling, no recommendation"), ("Counterfactual Estimation for Ad Click Logs", "counterfactual estimation on ad logs"), ("Link Prediction on Bipartite Interaction Graphs", "generic link prediction, only uses rec datasets")]
 SURN = ["Kim", "Lee", "Park", "Chen", "Wang", "Zhang", "Liu", "Smith", "Garcia", "Tanaka", "Singh", "Nguyen", "Müller"]
 TRACKS = {"RecSys": [("main", 70), ("short", 20), ("resource", 10)], "SIGIR": [("main", 55), ("short", 30), ("resource", 10), ("applied", 5)], "KDD": [("main", 60), ("applied", 40)],
           "WWW": [("main", 85), ("applied", 15)], "WSDM": [("main", 100)], "CIKM": [("main", 50), ("short", 30), ("applied", 15), ("resource", 5)], "NeurIPS": [("main", 95), ("resource", 5)], "ICLR": [("main", 100)]}
@@ -63,7 +63,7 @@ for vid in venues.venue_ids():
         if n_rec == 0:
             continue
         n_total = n_rec if vcfg.get("all_core") else TOTAL[vid][i]
-        n_total = min(n_total, n_rec + 400)          # 예시 파일 크기 제한 (비율은 status 에서 그대로 보이도록 total 은 따로 기록하지 않음)
+        n_total = min(n_total, n_rec + 400)          # keep sample files small
         papers = []
         for k in range(n_total):
             is_rec = k < n_rec
@@ -89,7 +89,7 @@ for vid in venues.venue_ids():
             papers.append(p)
             if not vcfg.get("all_core"):
                 label = {"core": "core", "related": "related", "border": "no", "no": "no"}[kind]
-                rows.append({"id": pid, "label": label, "confidence": "low" if R.random() < 0.04 else "high", "reason": reason if kind == "border" else R.choice(["순차 추천 과제", "추천 벤치마크 실험", "광고 CTR · 추천 아님", "일반 검색 랭킹"]),
+                rows.append({"id": pid, "label": label, "confidence": "low" if R.random() < 0.04 else "high", "reason": reason if kind == "border" else R.choice(["sequential recommendation task", "experiments on recommendation benchmarks", "advertising CTR, not recommendation", "generic search ranking"]),
                              "kw": kind in ("core", "related", "border"), "abs": True, "model": config.JUDGE_MODEL, "pv": config.PROMPT_VERSION, "ts": "sample"})
         volumes = ["sample-1", "sample-2"] if (vid == "KDD" and y >= 2025) else ["sample"]
         write_json(OUT / "data" / "raw" / f"{vid}-{y}.json", {"venue": vid, "year": y, "source": "sample", "collected": NOW.isoformat(), "volumes": volumes, "sections": True, "papers": papers}, indent=0)
@@ -99,4 +99,4 @@ write_json(OUT / "data" / "meta.json", {"last_update": "2026-11-20", "last_run_i
 rep = Report("sample")
 aggregate.build(OUT / "data", NOW, rep, validate=False, run_kind="sample")
 print(rep.render())
-print(f"→ {OUT}/data 에 생성. 'bash scripts/build_site.sh {OUT}' 로 사이트를 조립하세요")
+print(f"→ written to {OUT}/data. Run 'bash scripts/build_site.sh {OUT}' to assemble the site")

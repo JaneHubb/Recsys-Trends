@@ -1,4 +1,4 @@
-"""수집 모듈의 파싱 로직 (네트워크 없이)."""
+"""Parsing logic of the collectors (no network)."""
 from __future__ import annotations
 
 from types import SimpleNamespace as NS
@@ -60,7 +60,7 @@ def test_dblp_kdd_two_volumes_dedup():
     a = {"result": {"hits": {"@total": "1", "hit": [_hit("conf/kdd/A25", "A.", "1-10")]}}}
     http = FakeHttp({"https://dblp.org/search/publ/api": (200, a), "https://dblp.org/db/conf/kdd/": (403, "")})
     res = collect_dblp.collect(http, venues.get("KDD"), 2025, Report("t"), with_sections=False)
-    assert len(res["papers"]) == 1 and len(res["volumes"]) == 3   # 같은 응답을 세 번 받았지만 중복 제거
+    assert len(res["papers"]) == 1 and len(res["volumes"]) == 3   # same response three times, de-duplicated
 
 
 def test_openreview_v1_decisions_and_v2_badges():

@@ -1,6 +1,6 @@
 # judge v1
 
-프롬프트를 바꾸면 pipeline/config.py 의 PROMPT_VERSION 을 올린다. 그러면 전체가 다시 판별된다.
+When you change this prompt, bump PROMPT_VERSION in pipeline/config.py; everything is then re-classified.
 
 ## system
 
@@ -24,7 +24,7 @@ Confidence:
 - "low" when the paper sits near the core/related or related/no boundary, or when the abstract is missing and the title is not decisive.
 
 Respond with only a JSON object on one line, no prose:
-{"label": "core" | "related" | "no", "confidence": "high" | "low", "reason": "<Korean, at most 40 characters, the one feature that decided the label>"}
+{"label": "core" | "related" | "no", "confidence": "high" | "low", "reason": "<English, at most 12 words, the one feature that decided the label>"}
 
 ## user
 

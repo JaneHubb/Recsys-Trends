@@ -1,19 +1,19 @@
-# 학회 정의. 학회를 추가하려면 항목 하나를 더 넣으면 된다.
+# Venue definitions. To add a venue, add one more entry.
 #
 # source        : dblp | openreview
-# month         : 통상 개최월 (집계 완료 판정에 사용)
-# all_core      : true면 LLM 판별을 생략하고 전편 core로 둔다 (RecSys)
-# color         : 사이트의 학회 색 슬롯 (1~8, 검증된 8색 순서. 9번째부터는 "기타"로 묶는다)
-# dblp.tocs     : DBLP 목차(bht) 이름 후보. {year}가 연도로 치환된다. 결과가 있는 것을 모두 모으고 논문 키로 중복 제거한다
-# dblp.volumes  : [{from: 연도, count: n}] 그 해부터 기대하는 볼륨 수 (KDD는 2025년부터 두 사이클)
-# tracks        : DBLP 목차 섹션 제목 → 정규 트랙. 위에서부터 처음 맞는 규칙을 쓴다 (대소문자 무시)
-#                 정규 트랙: main | short | applied | resource | demo | non_paper
-#                 어느 규칙에도 맞지 않는 섹션은 페이지 수 규칙으로 main/short로 두고 Issue로 알린다
-# short_max_pages : 섹션 정보가 없을 때 이 쪽수 이하면 short (0이면 쓰지 않음)
-# complete_rule : date (개최월 + 1개월이 지나야 완료) | presence (목록이 있으면 완료. OpenReview는 결정 공개 후에만 목록이 생김)
-# openreview    : [{from, to, api: v1|v2, invitation|venueid, track}] 연도 구간별 설정. track을 주면 그 트랙으로 고정
+# month         : usual conference month (used for the completion check)
+# all_core      : true skips LLM classification and marks every paper core (RecSys)
+# color         : colour slot on the site (1-8, a validated 8-colour order; a 9th venue is shown in grey)
+# dblp.tocs     : candidate DBLP TOC (bht) names; {year} is substituted. All that exist are merged and de-duplicated by paper key
+# dblp.volumes  : [{from: year, count: n}] number of volumes expected from that year on (KDD has two cycles since 2025)
+# tracks        : DBLP TOC section title → normalized track. First matching rule wins (case-insensitive)
+#                 normalized tracks: main | short | applied | resource | demo | non_paper
+#                 a section matching no rule is counted as main/short by page count and reported in an Issue
+# short_max_pages : without section info, papers up to this many pages are short (0 disables)
+# complete_rule : date (complete once conference month + 1 has passed) | presence (complete once a listing exists; OpenReview lists only after decisions)
+# openreview    : [{from, to, api: v1|v2, invitation|venueid, track}] per year range. track pins every note to that track
 
-counted_tracks: [main, short, applied, resource]   # 기본 집계에 들어가는 트랙 (demo는 사이트에서 토글)
+counted_tracks: [main, short, applied, resource]   # tracks in the default count (demo is a toggle on the site)
 start_year: 2018
 
 venues:
@@ -29,10 +29,10 @@ venues:
     short_max_pages: 0
     tracks:
       - {match: "reproducib", track: resource}
-      - {match: "late[- ]?breaking|lbr", track: short}       # RecSys LBR은 심사를 거친 짧은 논문이라 short로 센다
+      - {match: "late[- ]?breaking|lbr", track: short}       # RecSys LBR papers are peer-reviewed short papers
       - {match: "short", track: short}
       - {match: "demo", track: demo}
-      - {match: "industr", track: non_paper}                  # RecSys 산업 트랙은 발표 초록(1~2쪽)이라 제외
+      - {match: "industr", track: non_paper}                  # the RecSys industry track is talk abstracts (1-2 pages)
       - {match: "keynote|tutorial|workshop|doctoral|panel|poster|challenge|perspective", track: non_paper}
       - {match: "main|research|paper|session|full", track: main}
 
@@ -78,7 +78,7 @@ venues:
     color: 4
     complete_rule: date
     dblp:
-      tocs: ["www{year}"]            # 'www{year}c' (companion: 워크숍·포스터)는 넣지 않는다
+      tocs: ["www{year}"]            # 'www{year}c' (companion: workshops, posters) is deliberately excluded
     short_max_pages: 0
     tracks:
       - {match: "industr", track: applied}
@@ -145,7 +145,7 @@ venues:
     color: 8
     complete_rule: presence
     dblp:
-      tocs: ["iclr{year}"]       # OpenReview 가 0편을 돌려주면 DBLP 로 대체 수집 (배지는 없음)
+      tocs: ["iclr{year}"]       # fallback when OpenReview returns nothing (no badges in that case)
     short_max_pages: 0
     tracks:
       - {match: ".*", track: main}
