@@ -1,0 +1,86 @@
+# Monthly check (no LLM): heartbeat commit (keeps scheduled workflows from being disabled after 60 idle days) · source health check · re-aggregate · deploy
+name: monthly
+
+on:
+  schedule:
+    - cron: "41 2 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+jobs:
+  monthly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      S2_API_KEY: ${{ secrets.S2_API_KEY }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Monthly check
+        id: run
+        run: python -m pipeline.run monthly
+
+      - name: Run report
+        if: always()
+        run: cat state/last_report.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - name: Commit data and state
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data state
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "data: monthly $(date -u +%Y-%m)"
+          ok=0
+          for i in 1 2 3; do
+            if git pull --rebase origin "${{ github.ref_name }}" && git push; then ok=1; break; fi
+            sleep 15
+          done
+          if [ "$ok" != 1 ]; then echo "::error::push failed — state files were not saved"; exit 1; fi
+
+      - name: Build site
+        if: steps.run.outputs.deploy == 'true'
+        run: bash scripts/build_site.sh
+
+      - uses: actions/configure-pages@v5
+        if: steps.run.outputs.deploy == 'true'
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.run.outputs.deploy == 'true'
+        with:
+          path: _site
+
+      - uses: actions/deploy-pages@v4
+        if: steps.run.outputs.deploy == 'true'
+        id: deployment
+
+      - name: Failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/gh_issue.sh pipeline-failure "Pipeline failed: monthly $(date -u +%F)" --failure
